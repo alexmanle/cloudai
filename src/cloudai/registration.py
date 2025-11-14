@@ -136,6 +136,11 @@ def register_all():
         UCCTestReportGenerationStrategy,
         UCCTestSlurmCommandGenStrategy,
     )
+    from cloudai.workloads.llama4_megatron import (
+        Llama4MegatronTestDefinition,
+        Llama4MegatronTestReportGenerationStrategy,
+        Llama4MegatronTestStandaloneCommandGenStrategy,
+    )
 
     Registry().add_runner("slurm", SlurmRunner)
     Registry().add_runner("kubernetes", KubernetesRunner)
@@ -160,6 +165,9 @@ def register_all():
     Registry().add_command_gen_strategy(StandaloneSystem, SleepTestDefinition, SleepStandaloneCommandGenStrategy)
     Registry().add_command_gen_strategy(LSFSystem, SleepTestDefinition, SleepLSFCommandGenStrategy)
     Registry().add_command_gen_strategy(SlurmSystem, SleepTestDefinition, SleepSlurmCommandGenStrategy)
+    Registry().add_command_gen_strategy(
+        StandaloneSystem, Llama4MegatronTestDefinition, Llama4MegatronTestStandaloneCommandGenStrategy
+    )
 
     Registry().add_command_gen_strategy(SlurmSystem, MegatronRunTestDefinition, MegatronRunSlurmCommandGenStrategy)
     Registry().add_command_gen_strategy(SlurmSystem, NCCLTestDefinition, NcclTestSlurmCommandGenStrategy)
@@ -214,6 +222,7 @@ def register_all():
     Registry().add_test_definition("BashCmd", BashCmdTestDefinition)
     Registry().add_test_definition("NixlPerftest", NixlPerftestTestDefinition)
     Registry().add_test_definition("NIXLKVBench", NIXLKVBenchTestDefinition)
+    Registry().add_test_definition("llama4_megatronTest", Llama4MegatronTestDefinition)
 
     Registry().add_agent("grid_search", GridSearchAgent)
 
@@ -231,6 +240,7 @@ def register_all():
     Registry().add_report(NIXLBenchTestDefinition, NIXLBenchReportGenerationStrategy)
     Registry().add_report(AIDynamoTestDefinition, AIDynamoReportGenerationStrategy)
     Registry().add_report(NixlPerftestTestDefinition, NIXLKVBenchDummyReport)
+    Registry().add_report(Llama4MegatronTestDefinition, Llama4MegatronTestReportGenerationStrategy)
 
     Registry().add_scenario_report("per_test", PerTestReporter, ReportConfig(enable=True))
     Registry().add_scenario_report("status", StatusReporter, ReportConfig(enable=True))
