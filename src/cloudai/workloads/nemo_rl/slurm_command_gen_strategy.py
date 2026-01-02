@@ -51,7 +51,7 @@ class NeMoRLSlurmCommandGenStrategy(SlurmCommandGenStrategy):
         """Get all script paths as a dictionary."""
         return {
             "wrapper": self.scripts_dir / "nemo_rl_submit_and_parse_jobid.sh",
-            "launcher_log": self.test_run.output_path / "nemo_rl_launcher.log",
+            "launcher_log": self.test_run.output_path / "logs" / "nemo_rl_launcher.log",
             "run_nemo_rl": self.scripts_dir / "run_nemo_rl.sh",
             "generated_command": self.scripts_dir / "generated_command.sh",
         }
@@ -60,6 +60,7 @@ class NeMoRLSlurmCommandGenStrategy(SlurmCommandGenStrategy):
         """Generate bash command to execute run_nemo_rl.sh script."""
         # Create scripts directory
         self.scripts_dir.mkdir(parents=True, exist_ok=True)
+        (self.test_run.output_path / "logs").mkdir(parents=True, exist_ok=True)
         
         # Create the bash scripts in the scripts directory
         exp_script_path = self._create_run_experiment_script()
@@ -157,6 +158,7 @@ STEPS_PER_RUN={steps_per_run}
 MAX_STEPS={max_steps}
 NUM_RUNS=$(( (MAX_STEPS + STEPS_PER_RUN - 1) / STEPS_PER_RUN ))  # Round up
 NUM_MINUTES=100
+JSON_METRICS=/cloudai_run_results/metrics.json
 # ===== END CONFIG =====
 
 exit_if_max_steps_reached
@@ -177,7 +179,14 @@ uv run examples/run_grpo_math.py \\
     $@ \\
     2>&1 | tee /cloudai_run_results/run.log
 
-uv run tests/json_dump_tb_logs.py /cloudai_run_results/logs --output_path /cloudai_run_results/metrics.json
+uv run tests/json_dump_tb_logs.py /cloudai_run_results/logs --output_path $JSON_METRICS
+
+if [[ $(jq 'to_entries | .[] | select(.key == "train/loss") | .value | keys | map(tonumber) | max' $JSON_METRICS) -ge $MAX_STEPS ]]; then
+    uv run tests/check_metrics.py $JSON_METRICS \\
+        'mean(data["train/token_mult_prob_error"]) < 1.1' \\
+        'data["train/token_mult_prob_error"]["10"] < 1.1' \\
+        2>&1 | tee /cloudai_run_results/logs/metrics_checks.log
+fi
 '''
         
         script_path = self.scripts_dir / f"{exp_name}.sh"

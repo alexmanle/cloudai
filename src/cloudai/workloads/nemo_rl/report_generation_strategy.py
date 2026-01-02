@@ -23,13 +23,25 @@ import shutil
 from pathlib import Path
 from typing import ClassVar, Optional
 
+import pandas as pd
+
 from cloudai.core import METRIC_ERROR, ReportGenerationStrategy
 
 
 class NeMoRLReportGenerationStrategy(ReportGenerationStrategy):
     """Strategy for generating reports from NeMo RL test outputs."""
 
-    metrics: ClassVar[list[str]] = ["default"]
+    # Metric definitions: metric_name -> (display_name, json_path)
+    METRICS: ClassVar[dict[str, tuple[str, str]]] = {
+        "e2e": ("E2E", "performance/tokens_per_sec_per_gpu"),
+        "generation": ("Generation", "performance/generation_tokens_per_sec_per_gpu"),
+        "policy": ("Policy", "performance/training_worker_group_tokens_per_sec_per_gpu"),
+        "training": ("Training", "performance/policy_training_tokens_per_sec_per_gpu"),
+        "logprob": ("LogProb", "performance/policy_and_reference_logprobs_tokens_per_sec_per_gpu"),
+    }
+
+    # Derive metrics list from METRICS dict, adding "default" which returns E2E metric
+    metrics: ClassVar[list[str]] = ["default"] + list(METRICS.keys())
     
     @property
     def results_file(self) -> Path:
@@ -37,7 +49,11 @@ class NeMoRLReportGenerationStrategy(ReportGenerationStrategy):
 
     @property
     def launcher_log(self) -> Path:
-        return self.test_run.output_path / "nemo_rl_launcher.log"
+        return self.test_run.output_path / "logs" / "nemo_rl_launcher.log"
+
+    @property
+    def check_metrics_log(self) -> Path:
+        return self.test_run.output_path / "logs" / "metrics_checks.log"
 
     def can_handle_directory(self) -> bool:
         """
@@ -71,37 +87,64 @@ class NeMoRLReportGenerationStrategy(ReportGenerationStrategy):
 
         This method:
         - Locates and validates the metrics.json file
-        - Extracts relevant metrics
-        - Writes report file to output directory
-        - Cleans up clutter log files
+        - Extracts relevant performance metrics using get_metric()
+        - Computes statistics (mean, min, max, stddev) for each metric
+        - Parses check_metrics.log for pass/fail status
+        - Writes report file to output directory with formatted metrics
         """
         if not self.results_file.exists():
             logging.error(f"{self.results_file} not found")
             return
 
+        # Load metrics data
         try:
             with self.results_file.open("r") as file:
                 metrics_data = json.load(file)
-        except json.JSONDecodeError as e:
-            logging.error(f"Failed to parse {self.results_file}: {e}")
-            return
-        except Exception as e:
-            logging.error(f"Error reading {self.results_file}: {e}")
-            return
-
-        if not metrics_data:
-            logging.error(f"No valid metrics found in {self.results_file}. Report generation aborted.")
+        except (json.JSONDecodeError, Exception) as e:
+            logging.error(f"Error reading metrics from {self.results_file}: {e}")
             return
 
         # Write report to output directory
         report_file = self.test_run.output_path / "report.txt"
         with open(report_file, "w") as f:
-            f.write("NeMo RL Test Report\n")
-            f.write("=" * 50 + "\n\n")
-            f.write("Metrics:\n")
-            f.write("-" * 50 + "\n")
-            for key, value in metrics_data.items():
-                f.write(f"{key}: {value}\n")
+            f.write("NeMo RL Test Report\n")  
+            f.write("=" * 90 + "\n\n")
+            
+            # Performance Metrics Section
+            f.write("Performance Metrics (Tokens/sec/gpu):\n")
+            f.write("-" * 90 + "\n")
+            
+            # Build DataFrame for metrics statistics
+            metrics_stats = []
+            for metric_key, (display_name, json_key) in self.METRICS.items():
+                if json_key in metrics_data:
+                    values_dict = metrics_data[json_key]
+                    if isinstance(values_dict, dict):
+                        try:
+                            values = [float(v) for k, v in values_dict.items()]
+                            if values:
+                                stats = {
+                                    "Metric": display_name,
+                                    "Mean": pd.Series(values).mean(),
+                                    "Min": pd.Series(values).min(),
+                                    "Max": pd.Series(values).max(),
+                                    "StdDev": pd.Series(values).std(),
+                                }
+                                metrics_stats.append(stats)
+                        except (ValueError, TypeError) as e:
+                            logging.debug(f"Could not compute stats for {metric_key}: {e}")
+            
+            if metrics_stats:
+                df = pd.DataFrame(metrics_stats)
+                f.write(f"{'Metric':<15} {'Mean':>12} {'Min':>12} {'Max':>12} {'StdDev':>12}\n")
+                f.write("-" * 90 + "\n")
+                for _, row in df.iterrows():
+                    f.write(f"{row['Metric']:<15} {row['Mean']:>12.2f} {row['Min']:>12.2f} "
+                           f"{row['Max']:>12.2f} {row['StdDev']:>12.2f}\n")
+            else:
+                f.write("No performance metrics available\n")
+            
+            f.write("\nSee logs/metrics_checks.log for detailed metric checks.")
 
         logging.info(f"Report generated successfully at {report_file}")
 
@@ -187,14 +230,18 @@ class NeMoRLReportGenerationStrategy(ReportGenerationStrategy):
         Return specific metric value by name.
 
         Args:
-            metric: Name of the metric to retrieve.
+            metric: Name of the metric to retrieve (e.g., "e2e", "generation", "policy", "default")
 
         Returns:
             float: Metric value, or METRIC_ERROR if not found.
         """
-        logging.debug(f"Getting metric {metric} from {self.results_file.absolute()}")
+        # Handle "default" by returning E2E metric
+        if metric == "default":
+            return self.get_metric("e2e")
 
+        # Check if results file exists and load metrics
         if not self.results_file.exists():
+            logging.debug(f"Results file does not exist: {self.results_file}")
             return METRIC_ERROR
 
         try:
@@ -205,22 +252,50 @@ class NeMoRLReportGenerationStrategy(ReportGenerationStrategy):
             return METRIC_ERROR
 
         if not metrics_data:
+            logging.debug("Metrics data is empty")
             return METRIC_ERROR
 
-        if metric == "default":
-            # Return the first metric value found, or METRIC_ERROR if none
-            for value in metrics_data.values():
-                try:
-                    return float(value)
-                except (ValueError, TypeError):
-                    continue
+        # Get the JSON path for the requested metric
+        metric_lower = metric.lower()
+        if metric_lower not in self.METRICS:
+            logging.debug(f"Metric '{metric_lower}' not found in METRICS")
             return METRIC_ERROR
 
-        # Try to get the specific metric
-        if metric in metrics_data:
+        _, json_key = self.METRICS[metric_lower]
+
+        # Get the value directly using the full key (e.g., "performance/tokens_per_sec_per_gpu")
+        if json_key not in metrics_data:
+            logging.debug(f"Key '{json_key}' not found in metrics data")
+            return METRIC_ERROR
+        
+        current = metrics_data[json_key]
+        logging.debug(f"Found value for {metric}: {current} (type: {type(current).__name__})")
+
+        # Handle dict of run metrics (e.g., {"1": value1, "2": value2})
+        if isinstance(current, dict):
             try:
-                return float(metrics_data[metric])
-            except (ValueError, TypeError):
+                # Extract numeric values and compute average
+                values = []
+                for k, v in current.items():
+                    try:
+                        values.append(float(v))
+                    except (ValueError, TypeError) as e:
+                        logging.debug(f"Skipping non-numeric value for key {k}: {v} ({e})")
+                
+                if not values:
+                    logging.debug(f"No numeric values found in dict: {current}")
+                    return METRIC_ERROR
+                
+                avg = sum(values) / len(values)
+                logging.debug(f"Computed average from {len(values)} values: {avg}")
+                return avg
+            except Exception as e:
+                logging.error(f"Error computing average for {metric}: {e}")
                 return METRIC_ERROR
 
-        return METRIC_ERROR
+        # Handle single value
+        try:
+            return float(current)
+        except (ValueError, TypeError) as e:
+            logging.debug(f"Failed to convert to float: {current} ({e})")
+            return METRIC_ERROR
