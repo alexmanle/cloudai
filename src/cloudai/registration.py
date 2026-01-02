@@ -117,6 +117,11 @@ def register_all():
         NeMoLauncherSlurmCommandGenStrategy,
         NeMoLauncherTestDefinition,
     )
+    from cloudai.workloads.nemo_rl import (
+        NeMoRLReportGenerationStrategy,
+        NeMoRLSlurmCommandGenStrategy,
+        NeMoRLTestDefinition,
+    )
     from cloudai.workloads.nemo_run import (
         NeMoRunDataStoreReportGenerationStrategy,
         NeMoRunReportGenerationStrategy,
@@ -195,6 +200,7 @@ def register_all():
     )
 
     Registry().add_command_gen_strategy(SlurmSystem, NeMoLauncherTestDefinition, NeMoLauncherSlurmCommandGenStrategy)
+    Registry().add_command_gen_strategy(SlurmSystem, NeMoRLTestDefinition, NeMoRLSlurmCommandGenStrategy)
     Registry().add_command_gen_strategy(SlurmSystem, NeMoRunTestDefinition, NeMoRunSlurmCommandGenStrategy)
     Registry().add_command_gen_strategy(SlurmSystem, NIXLBenchTestDefinition, NIXLBenchSlurmCommandGenStrategy)
 
@@ -236,6 +242,7 @@ def register_all():
     Registry().add_test_definition("DeepEP", DeepEPTestDefinition)
     Registry().add_test_definition("Sleep", SleepTestDefinition)
     Registry().add_test_definition("NeMoLauncher", NeMoLauncherTestDefinition)
+    Registry().add_test_definition("NeMoRL", NeMoRLTestDefinition)
     Registry().add_test_definition("NeMoRun", NeMoRunTestDefinition)
     Registry().add_test_definition("JaxToolboxGPT", GPTTestDefinition)
     Registry().add_test_definition("JaxToolboxGrok", GrokTestDefinition)
@@ -262,6 +269,7 @@ def register_all():
     Registry().add_report(MegatronBridgeTestDefinition, MegatronBridgeReportGenerationStrategy)
     Registry().add_report(NCCLTestDefinition, NcclTestPerformanceReportGenerationStrategy)
     Registry().add_report(NeMoLauncherTestDefinition, NeMoLauncherReportGenerationStrategy)
+    Registry().add_report(NeMoRLTestDefinition, NeMoRLReportGenerationStrategy)
     Registry().add_report(NeMoRunTestDefinition, NeMoRunReportGenerationStrategy)
     Registry().add_report(NeMoRunTestDefinition, NeMoRunDataStoreReportGenerationStrategy)
     Registry().add_report(NemotronTestDefinition, JaxToolboxReportGenerationStrategy)
