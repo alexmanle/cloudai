@@ -41,15 +41,32 @@ class NeMoRLSlurmCommandGenStrategy(SlurmCommandGenStrategy):
         tdef: NeMoRLTestDefinition = cast(NeMoRLTestDefinition, self.test_run.test)
         return str(tdef.docker_image.installed_path)
 
+    @property
+    def scripts_dir(self) -> Path:
+        """Get the scripts directory path."""
+        return self.test_run.output_path / "scripts"
+
+    @property
+    def script_paths(self) -> dict[str, Path]:
+        """Get all script paths as a dictionary."""
+        return {
+            "wrapper": self.scripts_dir / "nemo_rl_submit_and_parse_jobid.sh",
+            "launcher_log": self.test_run.output_path / "nemo_rl_launcher.log",
+            "run_nemo_rl": self.scripts_dir / "run_nemo_rl.sh",
+            "generated_command": self.scripts_dir / "generated_command.sh",
+        }
+
     def gen_exec_command(self) -> str:
         """Generate bash command to execute run_nemo_rl.sh script."""
-        # Create the bash scripts in the output directory
+        # Create scripts directory
+        self.scripts_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Create the bash scripts in the scripts directory
         exp_script_path = self._create_run_experiment_script()
         self._create_run_nemo_rl_script(exp_script_path)
         
         # Generate a simple bash command that runs run_nemo_rl.sh
-        run_script_path = self.test_run.output_path / "run_nemo_rl.sh"
-        launcher_cmd = f"bash {run_script_path.absolute()}"
+        launcher_cmd = f"bash {self.script_paths['run_nemo_rl'].absolute()}"
         
         # Wrap the launcher to capture and parse job ID
         full_cmd = self._wrap_launcher_for_job_id_and_quiet_output(launcher_cmd)
@@ -66,7 +83,7 @@ class NeMoRLSlurmCommandGenStrategy(SlurmCommandGenStrategy):
 
     def _write_command_to_file(self, command: str, output_path: Path) -> None:
         """Write the generated command to a file for debugging/tracking."""
-        log_file = output_path / "generated_command.sh"
+        log_file = self.script_paths["generated_command"]
         log_file.parent.mkdir(parents=True, exist_ok=True)
         with log_file.open("w") as f:
             f.write(f"{command}\n")
@@ -76,19 +93,15 @@ class NeMoRLSlurmCommandGenStrategy(SlurmCommandGenStrategy):
         Run the NeMo RL launcher quietly and ensure CloudAI can parse a job ID.
 
         CloudAI's SlurmRunner expects stdout to include "Submitted batch job <id>".
-        This writes a readable wrapper script (with section breaks) into the test output directory, then runs it.
+        This writes a readable wrapper script (with section breaks) into the scripts directory, then runs it.
         """
-        output_dir = self.test_run.output_path.absolute()
-        output_dir.mkdir(parents=True, exist_ok=True)
-
-        wrapper_path = output_dir / "nemo_rl_submit_and_parse_jobid.sh"
-        log_path = output_dir / "nemo_rl_launcher.log"
+        self.scripts_dir.mkdir(parents=True, exist_ok=True)
 
         script_lines = [
             "#!/usr/bin/env bash",
             "set -euo pipefail",
             "",
-            f'LOG="{log_path}"',
+            f'LOG="{self.script_paths["launcher_log"]}"',
             "",
             # Launch NeMo RL (log stdout/stderr to file)
             "",
@@ -112,13 +125,14 @@ class NeMoRLSlurmCommandGenStrategy(SlurmCommandGenStrategy):
             "",
         ]
 
+        wrapper_path = self.script_paths["wrapper"]
         wrapper_path.write_text("\n".join(script_lines))
         wrapper_path.chmod(wrapper_path.stat().st_mode | stat.S_IXUSR)
 
         return f"bash {wrapper_path}"
 
     def _create_run_experiment_script(self) -> Path:
-        """Create the run_experiment.sh script in the output directory."""
+        """Create the run_experiment.sh script in the scripts directory."""
         tdef: NeMoRLTestDefinition = cast(NeMoRLTestDefinition, self.test_run.test)
         tdef_cmd_args: NeMoRLCmdArgs = tdef.cmd_args
         
@@ -166,13 +180,13 @@ uv run examples/run_grpo_math.py \\
 uv run tests/json_dump_tb_logs.py /cloudai_run_results/logs --output_path /cloudai_run_results/metrics.json
 '''
         
-        script_path = self.test_run.output_path / f"{exp_name}.sh"
+        script_path = self.scripts_dir / f"{exp_name}.sh"
         script_path.write_text(script_content, encoding="utf-8")
         script_path.chmod(0o755)
         return script_path
 
     def _create_run_nemo_rl_script(self, exp_script_path: Path) -> Path:
-        """Create the run_nemo_rl.sh script."""
+        """Create the run_nemo_rl.sh script in the scripts directory."""
         tdef: NeMoRLTestDefinition = cast(NeMoRLTestDefinition, self.test_run.test)
         
         # Get command arguments
@@ -206,7 +220,7 @@ echo "  Script: {ray_path}"
 sbatch --nodes={num_nodes} --account={self.system.account} --job-name={self.job_name_prefix()} --partition={self.system.default_partition} --time={self.test_run.time_limit} --gres=gpu:{num_gpus} {ray_path}
 '''
         
-        script_path = self.test_run.output_path / "run_nemo_rl.sh"
+        script_path = self.script_paths["run_nemo_rl"]
         script_path.write_text(script_content, encoding="utf-8")
         script_path.chmod(0o755)
         return script_path
