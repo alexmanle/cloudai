@@ -14,10 +14,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-name = "nemo_rl"
+name = "nemo_rl_llama3_1_8b_instruct"
 
 [[Tests]]
-id = "Tests.nemo_rl"
+id = "Tests.nemo_rl_llama3_1_8b_instruct"
 test_name = "nemo_rl_base_test"
 num_nodes = 2
 time_limit = "00:40:00"
