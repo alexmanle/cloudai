@@ -91,3 +91,7 @@ install/
 results/
 .*
 .cloudai.toml
+
+# Ignore nemo-rl logs
+slurm-*.out
+*-logs/
