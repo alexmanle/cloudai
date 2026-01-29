@@ -158,7 +158,7 @@ def handle_dse_job(runner: Runner, args: argparse.Namespace) -> int:
             items = ", ".join(str(loc) for error in e.errors() for loc in error["loc"])
             logging.error(f"Invalid agent_config for agent '{agent_type}': {items}")
             valid_overrides = validate_agent_overrides(agent_type)
-            logging.error(f"Valid overrides: ")
+            logging.error("Valid overrides: ")
             for item in valid_overrides.items():
                 logging.error(f"  - {item[0]}: {item[1]}")
             err = 1
@@ -189,6 +189,7 @@ def handle_dse_job(runner: Runner, args: argparse.Namespace) -> int:
 def validate_agent_overrides(agent_type: str, agent_config: Optional[dict[str, Any]] = None) -> dict[str, Any]:
     """
     Validate and process agent configuration overrides.
+
     If agent_config is empty, returns the available configuration fields for the agent type.
     """
     config_class_map = {
@@ -199,7 +200,7 @@ def validate_agent_overrides(agent_type: str, agent_config: Optional[dict[str, A
 
     config_class = config_class_map.get(agent_type)
     if not config_class:
-        valid_types = ", ".join(f"'{t}'" for t in config_class_map.keys())
+        valid_types = ", ".join(f"'{t}'" for t in config_class_map)
         raise ValueError(
             f"Agent type '{agent_type}' does not support configuration overrides. "
             f"Valid agent types are: {valid_types}. "
