@@ -155,10 +155,12 @@ def handle_dse_job(runner: Runner, args: argparse.Namespace) -> int:
         try:
             agent_overrides = validate_agent_overrides(agent_type, test_run.test.agent_config)
         except ValidationError as e:
-            logging.error(f"Invalid agent_config for agent '{agent_type}':")
-            for error in e.errors():
-                field = ".".join(str(loc) for loc in error["loc"])
-                logging.error(f"  - {field}: {error['msg']}")
+            items = ", ".join(str(loc) for error in e.errors() for loc in error["loc"])
+            logging.error(f"Invalid agent_config for agent '{agent_type}': {items}")
+            valid_overrides = validate_agent_overrides(agent_type)
+            logging.error(f"Valid overrides: ")
+            for item in valid_overrides.items():
+                logging.error(f"  - {item[0]}: {item[1]}")
             err = 1
             continue
 
@@ -184,21 +186,30 @@ def handle_dse_job(runner: Runner, args: argparse.Namespace) -> int:
     return err
 
 
-def validate_agent_overrides(agent_type: str, agent_config: Optional[dict[str, Any]]) -> dict[str, Any]:
-    """Validate and process agent configuration overrides."""
-    if not agent_config:
-        return {}
-
+def validate_agent_overrides(agent_type: str, agent_config: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    """
+    Validate and process agent configuration overrides.
+    If agent_config is empty, returns the available configuration fields for the agent type.
+    """
     config_class_map = {
         "ga": GeneticAlgorithmConfig,
-        "bo": BayesianOptimizationConfig,
+        "bo_gp": BayesianOptimizationConfig,
         "mab": MultiArmedBanditConfig,
     }
 
     config_class = config_class_map.get(agent_type)
     if not config_class:
-        logging.debug(f"No config validation available for agent type '{agent_type}', using defaults.")
-        return {}
+        valid_types = ", ".join(f"'{t}'" for t in config_class_map.keys())
+        raise ValueError(
+            f"Agent type '{agent_type}' does not support configuration overrides. "
+            f"Valid agent types are: {valid_types}. "
+        )
+
+    if not agent_config:
+        available_overrides = {}
+        for field_name, field_info in config_class.model_fields.items():
+            available_overrides[field_name] = field_info.description
+        return available_overrides
 
     validated_config = config_class.model_validate(agent_config)
     agent_kwargs = validated_config.model_dump(exclude_none=True)
