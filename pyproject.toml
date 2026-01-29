@@ -45,7 +45,6 @@ requires-python = ">=3.10"
     "vulture==2.14",
     "pytest~=8.4",
     "pytest-cov~=7.0",
-    "pytest-asyncio~=1.2",
     "import-linter~=2.5",
     "pytest-deadfixtures~=2.2",
     "taplo~=0.9.3",
