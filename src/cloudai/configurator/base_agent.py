@@ -15,7 +15,9 @@
 # limitations under the License.
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
+
+from cloudai.models.agent_config import AgentConfig
 
 from .base_gym import BaseGym
 
@@ -27,6 +29,8 @@ class BaseAgent(ABC):
     Provides a unified interface and parameter management for action spaces.
     Automatically infers parameter types from TestRun's cmd_args.
     """
+
+    config: Optional[AgentConfig] = None
 
     def __init__(self, env: BaseGym):
         """

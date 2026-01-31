@@ -41,11 +41,6 @@ from cloudai.core import (
     TestParser,
     TestScenario,
 )
-from cloudai.models.agent_config import (
-    BayesianOptimizationConfig,
-    GeneticAlgorithmConfig,
-    MultiArmedBanditConfig,
-)
 from cloudai.models.scenario import ReportConfig
 from cloudai.models.workload import TestDefinition
 from cloudai.parser import HOOK_ROOT
@@ -155,12 +150,12 @@ def handle_dse_job(runner: Runner, args: argparse.Namespace) -> int:
         try:
             agent_overrides = validate_agent_overrides(agent_type, test_run.test.agent_config)
         except ValidationError as e:
-            items = ", ".join(str(loc) for error in e.errors() for loc in error["loc"])
-            logging.error(f"Invalid agent_config for agent '{agent_type}': {items}")
-            valid_overrides = validate_agent_overrides(agent_type)
+            logging.error(f"Invalid agent_config for agent '{agent_type}': ")
+            for error in e.errors():
+                logging.error(f"  - {'.'.join(str(var_name) for var_name in error['loc'])}: {error['msg']}")
             logging.error("Valid overrides: ")
-            for item in valid_overrides.items():
-                logging.error(f"  - {item[0]}: {item[1]}")
+            for item, desc in validate_agent_overrides(agent_type).items():
+                logging.error(f"  - {item}: {desc}")
             err = 1
             continue
 
@@ -192,32 +187,28 @@ def validate_agent_overrides(agent_type: str, agent_config: Optional[dict[str, A
 
     If agent_config is empty, returns the available configuration fields for the agent type.
     """
-    config_class_map = {
-        "ga": GeneticAlgorithmConfig,
-        "bo_gp": BayesianOptimizationConfig,
-        "mab": MultiArmedBanditConfig,
-    }
+    registry = Registry()
+    config_class_map = {}
+    for agent_name, agent_class in registry.agents_map.items():
+        if agent_class.config:
+            config_class_map[agent_name] = agent_class.config
 
     config_class = config_class_map.get(agent_type)
     if not config_class:
-        valid_types = ", ".join(f"'{t}'" for t in config_class_map)
+        valid_types = ", ".join(f"'{agent_name}'" for agent_name in config_class_map)
         raise ValueError(
             f"Agent type '{agent_type}' does not support configuration overrides. "
             f"Valid agent types are: {valid_types}. "
         )
 
-    if not agent_config:
-        available_overrides = {}
-        for field_name, field_info in config_class.model_fields.items():
-            available_overrides[field_name] = field_info.description
-        return available_overrides
-
-    validated_config = config_class.model_validate(agent_config)
-    agent_kwargs = validated_config.model_dump(exclude_none=True)
-
-    if agent_kwargs:
+    if agent_config:
+        validated_config = config_class.model_validate(agent_config)
+        agent_kwargs = validated_config.model_dump(exclude_none=True)
         logging.info(f"Applying agent config overrides for '{agent_type}': {agent_kwargs}")
-
+    else:
+        agent_kwargs = {}
+        for field_name, field_info in config_class.model_fields.items():
+            agent_kwargs[field_name] = field_info.description
     return agent_kwargs
 
 
