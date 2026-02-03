@@ -148,7 +148,11 @@ def handle_dse_job(runner: Runner, args: argparse.Namespace) -> int:
         env = CloudAIGymEnv(test_run=test_run, runner=runner.runner)
 
         try:
-            agent_overrides = validate_agent_overrides(agent_type, test_run.test.agent_config)
+            agent_overrides = (
+                validate_agent_overrides(agent_type, test_run.test.agent_config)
+                if test_run.test.agent_config is not None
+                else None
+            )
         except ValidationError as e:
             logging.error(f"Invalid agent_config for agent '{agent_type}': ")
             for error in e.errors():
@@ -158,8 +162,7 @@ def handle_dse_job(runner: Runner, args: argparse.Namespace) -> int:
                 logging.error(f"  - {item}: {desc}")
             err = 1
             continue
-
-        agent = agent_class(env, **agent_overrides) if agent_overrides else agent_class(env)
+        agent = agent_class(env, **agent_overrides) if agent_overrides is not None else agent_class(env)
 
         for step in range(agent.max_steps):
             result = agent.select_action()
