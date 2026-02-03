@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
-# Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,11 +21,12 @@ import logging
 import signal
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Any, Callable, List, Optional
 from unittest.mock import Mock
 
 import toml
 import yaml
+from pydantic import ValidationError
 
 from cloudai.core import (
     BaseInstaller,
@@ -145,7 +146,24 @@ def handle_dse_job(runner: Runner, args: argparse.Namespace) -> int:
             continue
 
         env = CloudAIGymEnv(test_run=test_run, runner=runner.runner)
-        agent = agent_class(env)
+
+        try:
+            agent_overrides = (
+                validate_agent_overrides(agent_type, test_run.test.agent_config)
+                if test_run.test.agent_config is not None
+                else None
+            )
+        except ValidationError as e:
+            logging.error(f"Invalid agent_config for agent '{agent_type}': ")
+            for error in e.errors():
+                logging.error(f"  - {'.'.join(str(var_name) for var_name in error['loc'])}: {error['msg']}")
+            logging.error("Valid overrides: ")
+            for item, desc in validate_agent_overrides(agent_type).items():
+                logging.error(f"  - {item}: {desc}")
+            err = 1
+            continue
+        agent = agent_class(env, **agent_overrides) if agent_overrides is not None else agent_class(env)
+
         for step in range(agent.max_steps):
             result = agent.select_action()
             if result is None:
@@ -164,6 +182,37 @@ def handle_dse_job(runner: Runner, args: argparse.Namespace) -> int:
 
     logging.info("All jobs are complete.")
     return err
+
+
+def validate_agent_overrides(agent_type: str, agent_config: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    """
+    Validate and process agent configuration overrides.
+
+    If agent_config is empty, returns the available configuration fields for the agent type.
+    """
+    registry = Registry()
+    config_class_map = {}
+    for agent_name, agent_class in registry.agents_map.items():
+        if agent_class.config:
+            config_class_map[agent_name] = agent_class.config
+
+    config_class = config_class_map.get(agent_type)
+    if not config_class:
+        valid_types = ", ".join(f"'{agent_name}'" for agent_name in config_class_map)
+        raise ValueError(
+            f"Agent type '{agent_type}' does not support configuration overrides. "
+            f"Valid agent types are: {valid_types}. "
+        )
+
+    if agent_config:
+        validated_config = config_class.model_validate(agent_config)
+        agent_kwargs = validated_config.model_dump(exclude_none=True)
+        logging.info(f"Applying agent config overrides for '{agent_type}': {agent_kwargs}")
+    else:
+        agent_kwargs = {}
+        for field_name, field_info in config_class.model_fields.items():
+            agent_kwargs[field_name] = field_info.description
+    return agent_kwargs
 
 
 def generate_reports(system: System, test_scenario: TestScenario, result_dir: Path) -> None:
