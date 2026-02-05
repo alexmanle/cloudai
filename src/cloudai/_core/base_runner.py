@@ -77,7 +77,7 @@ class BaseRunner(ABC):
         for job in self.jobs:
             logging.info(f"Terminating job {job.id} for test {job.test_run.name}")
             self.system.kill(job)
-        logging.info("All jobs have been killed.")
+        logging.info("Waiting for all jobs to be killed.")
 
     def run(self):
         """Run the test scenario."""
