@@ -18,11 +18,14 @@ import json
 import logging
 import re
 from pathlib import Path
-
-import pandas as pd
+from typing import TYPE_CHECKING
 
 from cloudai.core import ReportGenerationStrategy
 from cloudai.report_generator.tool.csv_report_tool import CSVReportTool
+from cloudai.util.lazy_imports import lazy
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 
 class DeepEPReportGenerationStrategy(ReportGenerationStrategy):
@@ -86,7 +89,7 @@ class DeepEPReportGenerationStrategy(ReportGenerationStrategy):
                 all_results.append(result)
 
         if all_results:
-            df = pd.DataFrame(all_results)
+            df = lazy.pd.DataFrame(all_results)
 
             column_order = [
                 "mode",
