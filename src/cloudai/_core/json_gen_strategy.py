@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
-# Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +18,8 @@ import re
 from abc import ABC, abstractmethod
 from typing import Any, Dict
 
+import toml
+
 from .system import System
 from .test_scenario import TestRun
 
@@ -28,6 +30,8 @@ class JsonGenStrategy(ABC):
 
     It specifies how to generate JSON job specifications based on system and test parameters.
     """
+
+    TEST_RUN_DUMP_FILE_NAME: str = "test-run.toml"
 
     def __init__(self, system: System, test_run: TestRun) -> None:
         self.system = system
@@ -49,10 +53,23 @@ class JsonGenStrategy(ABC):
             str: The sanitized job name that complies with Kubernetes naming rules.
         """
         sanitized_name = job_name.lower()
-        sanitized_name = re.sub(r"[^a-z0-9.-]", "-", sanitized_name)
+        sanitized_name = re.sub(r"[^a-z0-9-]", "-", sanitized_name)
         sanitized_name = re.sub(r"^[^a-z0-9]+", "", sanitized_name)
+        sanitized_name = sanitized_name[:253]
         sanitized_name = re.sub(r"[^a-z0-9]+$", "", sanitized_name)
-        return sanitized_name[:253]
+
+        if not sanitized_name:
+            raise ValueError(f"'{job_name}' cannot be sanitized to a valid Kubernetes job name.")
+
+        return sanitized_name
+
+    def store_test_run(self) -> None:
+        from cloudai.models.scenario import TestRunDetails
+
+        test_cmd, srun_cmd = ("", "n/a")
+        with (self.test_run.output_path / self.TEST_RUN_DUMP_FILE_NAME).open("w") as f:
+            trd = TestRunDetails.from_test_run(self.test_run, test_cmd=test_cmd, full_cmd=srun_cmd)
+            toml.dump(trd.model_dump(), f)
 
     @abstractmethod
     def gen_json(self) -> Dict[Any, Any]:

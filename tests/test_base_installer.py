@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
-# Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -293,6 +293,21 @@ class TestSuccessIsPopulated:
         )
         assert f2._installed_path is not None, "Second file was not marked as installed"
 
+    def test_both_mark_as_installed(self, installer: SlurmInstaller):
+        f1, f2 = File(src=Path(__file__)), File(src=Path(__file__))
+
+        assert f1 == f2, "Files should be equal"
+        assert f1 is not f2, "Files should be distinct objects"
+        assert f1._installed_path is None, "First file should not be installed before test"
+        assert f2._installed_path is None, "Second file should not be installed before test"
+
+        res = installer.mark_as_installed([f1, f2])
+
+        assert res.success, "mark_as_installed should succeed"
+        assert f1._installed_path is not None, "First file should have installed_path set"
+        assert f2._installed_path is not None, "Second file should have installed_path set"
+        assert f1._installed_path == f2._installed_path, "Files should have same installed_path"
+
 
 @pytest.fixture(params=["k8s", "slurm"])
 def installer(
@@ -316,9 +331,7 @@ def test_check_supported(installer: KubernetesInstaller | SlurmInstaller):
     installer.hf_model_manager = Mock()
 
     git = GitRepo(url="./git_url", commit="commit_hash")
-    items = [DockerImage("fake_url/img"), PythonExecutable(git), HFModel("model_name")]
-    if isinstance(installer, SlurmInstaller):
-        items.append(File(Path(__file__)))
+    items = [DockerImage("fake_url/img"), PythonExecutable(git), HFModel("model_name"), File(Path(__file__))]
     for item in items:
         res = installer.install_one(item)
         assert res.success, f"Failed to install {item} for {installer.__class__.__name__=} {res.message=}"

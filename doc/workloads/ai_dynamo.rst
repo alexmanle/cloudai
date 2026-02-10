@@ -16,16 +16,22 @@ Before running the AI Dynamo workload on a Kubernetes cluster, ensure that the c
 .. code-block:: bash
 
    export NAMESPACE=dynamo-system
-   export RELEASE_VERSION=0.6.1  # replace with the desired release version
+   export RELEASE_VERSION=0.7.0  # replace with the desired release version
 
-   helm fetch https://helm.ngc.nvidia.com/nvidia/ai-dynamo/charts/dynamo-crds-${RELEASE_VERSION}.tgz
-   helm install dynamo-crds dynamo-crds-${RELEASE_VERSION}.tgz --namespace default
+   helm upgrade -n default -i dynamo-crds https://helm.ngc.nvidia.com/nvidia/ai-dynamo/charts/dynamo-crds-${RELEASE_VERSION}.tgz
+   helm upgrade -n default -i dynamo-platform https://helm.ngc.nvidia.com/nvidia/ai-dynamo/charts/dynamo-platform-${RELEASE_VERSION}.tgz
 
-   helm fetch https://helm.ngc.nvidia.com/nvidia/ai-dynamo/charts/dynamo-platform-${RELEASE_VERSION}.tgz
-   helm install dynamo-platform dynamo-platform-${RELEASE_VERSION}.tgz --namespace ${NAMESPACE} --create-namespace
+   # The following components are required for multi node only.
+   # Versions should be aligned with Dynamo version.
+   helm upgrade -n default -i grove oci://ghcr.io/ai-dynamo/grove/grove-charts:v0.0.0-gd462e65
+   helm upgrade -n default -i kai-scheduler oci://ghcr.io/nvidia/kai-scheduler/kai-scheduler:0.0.0-4c29820
 
 Launch and Monitor the Job
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. note::
+
+   Both CloudAI and Dynamo will try to access HuggingFace Hub. To avoid ``429 Too Many Requests`` errors and access models under auth, it is recommended to define ``HF_TOKEN`` environment variable before invoking CloudAI. Once set, run ``uv run hf auth login`` to authenticate.
 
 .. code-block:: bash
 
@@ -33,7 +39,7 @@ Launch and Monitor the Job
       --tests-dir conf/experimental/ai_dynamo/test \
       --test-scenario conf/experimental/ai_dynamo/test_scenario/vllm_k8s.toml
 
-Run using Slurm
+Run Using Slurm
 ---------------
 
 Node Configuration for AI Dynamo
@@ -41,11 +47,11 @@ Node Configuration for AI Dynamo
 
 AI Dynamo jobs use three distinct types of nodes:
 
-- **Frontend node**: Hosts the coordination services (`etcd`, `nats`), the **frontend server**, the **request generator** (`genai-perf`), and the first decode worker.
+- **Frontend node**: Hosts the coordination services (`etcd`, `nats`), the **frontend server**, the **request generator** (`genai-perf`), and the first decode worker
 - **Prefill node(s)**: Handle the prefill stage of inference
 - **Decode node(s)**: Handle the decode stage of inference (optional, depending on model and setup)
 
-The total number of nodes required must be:
+The total number of required nodes must be:
 
 ::
 
