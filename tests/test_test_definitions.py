@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
-# Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -87,6 +87,11 @@ def test_extra_args_str_nccl(input: dict, expected: str):
 def test_all_tests(toml_file: Path):
     with toml_file.open("r") as f:
         toml_dict = toml.load(f)
+
+    if toml_dict.get("test_template_name") == "MegatronBridge":
+        cmd_args = toml_dict.get("cmd_args", {}) or {}
+        if cmd_args.get("hf_token", None) == "":
+            pytest.skip("MegatronBridge example config requires user to set cmd_args.hf_token.")
 
     registry = Registry()
     template_name = toml_dict["test_template_name"]
@@ -278,9 +283,14 @@ class TestMegatronRun:
         assert "--num-attention-heads 32" in cmd
         assert "--num-layers 32" in cmd
         assert "--pipeline-model-parallel-size 1" in cmd
-        assert "--recompute-activations " in cmd
+        assert "--recompute-activations" not in cmd
         assert "--seq-length 4096" in cmd
         assert "--tensor-model-parallel-size 2" in cmd
+
+    def test_recompute_activations_set(self, megatron_run: MegatronRunTestDefinition):
+        megatron_run.cmd_args.recompute_activations = ""
+        cmd = " ".join([f"{k} {v}" for k, v in megatron_run.cmd_args_dict.items()])
+        assert "--recompute-activations " in cmd
 
     def test_nones_are_dropped(self, megatron_run: MegatronRunTestDefinition):
         to_be_none = {

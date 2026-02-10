@@ -3,8 +3,8 @@ Slurm Container
 
 This workload (`test_template_name` is ``SlurmContainer``) executes containerized workloads using Slurm with custom container configurations.
 
-Usage Example
--------------
+Usage Examples
+--------------
 
 Test TOML example:
 

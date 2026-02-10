@@ -60,6 +60,11 @@ def register_all():
         AIDynamoSlurmCommandGenStrategy,
         AIDynamoTestDefinition,
     )
+    from cloudai.workloads.aiconfig import (
+        AiconfiguratorReportGenerationStrategy,
+        AiconfiguratorStandaloneCommandGenStrategy,
+        AiconfiguratorTestDefinition,
+    )
 
     # Import all workloads and their strategies
     from cloudai.workloads.bash_cmd.bash_cmd import BashCmdCommandGenStrategy, BashCmdTestDefinition
@@ -85,6 +90,11 @@ def register_all():
         JaxToolboxReportGenerationStrategy,
         JaxToolboxSlurmCommandGenStrategy,
         NemotronTestDefinition,
+    )
+    from cloudai.workloads.megatron_bridge import (
+        MegatronBridgeReportGenerationStrategy,
+        MegatronBridgeSlurmCommandGenStrategy,
+        MegatronBridgeTestDefinition,
     )
     from cloudai.workloads.megatron_run import (
         CheckpointTimingReportGenerationStrategy,
@@ -124,6 +134,10 @@ def register_all():
         NIXLKVBenchDummyReport,
         NixlPerftestSlurmCommandGenStrategy,
         NixlPerftestTestDefinition,
+    )
+    from cloudai.workloads.osu_bench import (
+        OSUBenchSlurmCommandGenStrategy,
+        OSUBenchTestDefinition,
     )
     from cloudai.workloads.sleep import (
         SleepGradingStrategy,
@@ -169,10 +183,16 @@ def register_all():
     Registry().add_command_gen_strategy(StandaloneSystem, SleepTestDefinition, SleepStandaloneCommandGenStrategy)
     Registry().add_command_gen_strategy(LSFSystem, SleepTestDefinition, SleepLSFCommandGenStrategy)
     Registry().add_command_gen_strategy(SlurmSystem, SleepTestDefinition, SleepSlurmCommandGenStrategy)
+    Registry().add_command_gen_strategy(
+        StandaloneSystem, AiconfiguratorTestDefinition, AiconfiguratorStandaloneCommandGenStrategy
+    )
 
     Registry().add_command_gen_strategy(SlurmSystem, MegatronRunTestDefinition, MegatronRunSlurmCommandGenStrategy)
     Registry().add_command_gen_strategy(SlurmSystem, NCCLTestDefinition, NcclTestSlurmCommandGenStrategy)
     Registry().add_command_gen_strategy(SlurmSystem, DDLBTestDefinition, DDLBTestSlurmCommandGenStrategy)
+    Registry().add_command_gen_strategy(
+        SlurmSystem, MegatronBridgeTestDefinition, MegatronBridgeSlurmCommandGenStrategy
+    )
 
     Registry().add_command_gen_strategy(SlurmSystem, NeMoLauncherTestDefinition, NeMoLauncherSlurmCommandGenStrategy)
     Registry().add_command_gen_strategy(SlurmSystem, NeMoRunTestDefinition, NeMoRunSlurmCommandGenStrategy)
@@ -195,6 +215,7 @@ def register_all():
     Registry().add_command_gen_strategy(SlurmSystem, AIDynamoTestDefinition, AIDynamoSlurmCommandGenStrategy)
     Registry().add_command_gen_strategy(SlurmSystem, BashCmdTestDefinition, BashCmdCommandGenStrategy)
     Registry().add_command_gen_strategy(SlurmSystem, NIXLKVBenchTestDefinition, NIXLKVBenchSlurmCommandGenStrategy)
+    Registry().add_command_gen_strategy(SlurmSystem, OSUBenchTestDefinition, OSUBenchSlurmCommandGenStrategy)
 
     Registry().add_installer("slurm", SlurmInstaller)
     Registry().add_installer("standalone", StandaloneInstaller)
@@ -221,12 +242,15 @@ def register_all():
     Registry().add_test_definition("JaxToolboxNemotron", NemotronTestDefinition)
     Registry().add_test_definition("SlurmContainer", SlurmContainerTestDefinition)
     Registry().add_test_definition("MegatronRun", MegatronRunTestDefinition)
+    Registry().add_test_definition("MegatronBridge", MegatronBridgeTestDefinition)
     Registry().add_test_definition("TritonInference", TritonInferenceTestDefinition)
     Registry().add_test_definition("NIXLBench", NIXLBenchTestDefinition)
     Registry().add_test_definition("AIDynamo", AIDynamoTestDefinition)
     Registry().add_test_definition("BashCmd", BashCmdTestDefinition)
     Registry().add_test_definition("NixlPerftest", NixlPerftestTestDefinition)
     Registry().add_test_definition("NIXLKVBench", NIXLKVBenchTestDefinition)
+    Registry().add_test_definition("Aiconfigurator", AiconfiguratorTestDefinition)
+    Registry().add_test_definition("OSUBench", OSUBenchTestDefinition)
 
     Registry().add_agent("grid_search", GridSearchAgent)
 
@@ -235,6 +259,7 @@ def register_all():
     Registry().add_report(GPTTestDefinition, JaxToolboxReportGenerationStrategy)
     Registry().add_report(GrokTestDefinition, JaxToolboxReportGenerationStrategy)
     Registry().add_report(MegatronRunTestDefinition, CheckpointTimingReportGenerationStrategy)
+    Registry().add_report(MegatronBridgeTestDefinition, MegatronBridgeReportGenerationStrategy)
     Registry().add_report(NCCLTestDefinition, NcclTestPerformanceReportGenerationStrategy)
     Registry().add_report(NeMoLauncherTestDefinition, NeMoLauncherReportGenerationStrategy)
     Registry().add_report(NeMoRunTestDefinition, NeMoRunReportGenerationStrategy)
@@ -244,6 +269,7 @@ def register_all():
     Registry().add_report(TritonInferenceTestDefinition, TritonInferenceReportGenerationStrategy)
     Registry().add_report(NIXLBenchTestDefinition, NIXLBenchReportGenerationStrategy)
     Registry().add_report(AIDynamoTestDefinition, AIDynamoReportGenerationStrategy)
+    Registry().add_report(AiconfiguratorTestDefinition, AiconfiguratorReportGenerationStrategy)
     Registry().add_report(NixlPerftestTestDefinition, NIXLKVBenchDummyReport)
 
     Registry().add_scenario_report("per_test", PerTestReporter, ReportConfig(enable=True))
