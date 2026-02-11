@@ -206,10 +206,9 @@ def validate_agent_overrides(
         )
 
     if agent_config:
-        seed_parameters = agent_config.pop("seed_parameters", None)
+        seed_parameters = agent_config.get("seed_parameters", None)
         if seed_parameters:
-            valid_seed_parameters = validate_seed_parameters(test_run, seed_parameters)
-            agent_config["seed_parameters"] = valid_seed_parameters
+            validate_seed_parameters(test_run, seed_parameters)
 
         validated_config = config_class.model_validate(agent_config)
         agent_kwargs = validated_config.model_dump(exclude_none=True)
@@ -221,7 +220,7 @@ def validate_agent_overrides(
     return agent_kwargs
 
 
-def validate_seed_parameters(test_run: TestRun, seed_parameters: dict[str, Any]) -> dict[str, Any]:
+def validate_seed_parameters(test_run: TestRun, seed_parameters: dict[str, Any]) -> None:
     """Validate seed parameters against DSE-able command-line arguments."""
     flat_cmd_args = flatten_dict(test_run.test.cmd_args.model_dump(exclude_none=True))
     dse_cmd_args = {k: v for k, v in flat_cmd_args.items() if isinstance(v, list)}
@@ -233,7 +232,7 @@ def validate_seed_parameters(test_run: TestRun, seed_parameters: dict[str, Any])
         if key not in dse_cmd_args:
             raise KeyError(
                 f"Seed parameter '{key}' not found in DSE-able command-line arguments. "
-                f"Ensure that the key is one of the following available keys: {dse_cmd_args.keys()}"
+                f"Ensure that the key is one of the following available keys: {list(dse_cmd_args.keys())}"
             )
         if value not in dse_cmd_args[key]:
             raise ValueError(
@@ -242,7 +241,6 @@ def validate_seed_parameters(test_run: TestRun, seed_parameters: dict[str, Any])
             )
 
     logging.debug("Seed parameters validated successfully.")
-    return seed_parameters
 
 
 def generate_reports(system: System, test_scenario: TestScenario, result_dir: Path) -> None:
