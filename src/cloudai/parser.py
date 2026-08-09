@@ -31,7 +31,7 @@ from ._core.exceptions import (
 )
 from ._core.registry import Registry
 from ._core.system import System
-from ._core.test_scenario import TestScenario
+from ._core.test_scenario import ConfigPaths, TestScenario
 from .test_parser import TestParser
 from .test_scenario_parser import TestScenarioParser
 from .toml_utils import format_toml_decode_error
@@ -124,6 +124,12 @@ class Parser:
             )
         except TestScenarioParsingError:
             exit(1)  # exit right away to keep error message readable for users
+
+        test_scenario.config_paths = ConfigPaths(
+            system_path=self.system_config_path.resolve(),
+            tests_dir_path=test_path.resolve() if test_path is not None else None,
+            test_scenario_path=test_scenario_path.resolve(),
+        )
 
         scenario_tests = {tr.test.name for tr in test_scenario.test_runs}
         hook_scenario_tests = {

@@ -123,6 +123,11 @@ class TrainingConfig:
     test_scenario_name: str
     test_template_name: str
 
+    # Configuration sources
+    system_path: str
+    tests_dir_path: str
+    test_scenario_path: str
+
     # Environment
     container_image: str = ""
     cloudai_execution_node: str
@@ -131,7 +136,7 @@ class TrainingConfig:
     # Hardware
     # Depends on: num_nodes, gpus_per_node
     world_size: Optional[int] = None
-    # Source: TestRun.nnodes
+    # Populated from TestRun.nnodes.
     num_nodes: int
     gpus_per_node: Optional[int] = None
     nodes: list[str]  # compressed nodelist from the scenario

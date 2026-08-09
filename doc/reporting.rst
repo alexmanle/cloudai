@@ -8,6 +8,12 @@ This chapter describes the reporting system in CloudAI. In this chapter, we will
 - :ref:`Enabling, Disabling and Configuring Reports <enabling-disabling-and-configuring-reports>`
 - :ref:`Reporting Registration <reporting-registration>`
 - :ref:`Reporting Configuration Implementation <reporting-configuration-implementation>`
+- :doc:`Reports <reports>`
+
+.. toctree::
+   :hidden:
+
+   reports
 
 .. _overview:
 

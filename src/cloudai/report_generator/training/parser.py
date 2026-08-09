@@ -159,12 +159,16 @@ class TrainingParser(ABC):
     def _build_config(self, tr: TestRun, system: System, test_scenario: TestScenario) -> TrainingConfig:
         """Map the framework + test config into TrainingConfig, then fill the CloudAI-computed fields."""
         env_vars = {**getattr(system, "global_env_vars", {}), **tr.test.extra_env_vars}
+        config_paths = test_scenario.config_paths
         config = TrainingConfig(
             test_id=tr.name,
             test_name=tr.test.name,
             description=tr.test.description,
             test_scenario_name=test_scenario.name,
             test_template_name=tr.test.test_template_name,
+            system_path=str(config_paths.system_path) if config_paths is not None else "",
+            tests_dir_path=str(config_paths.tests_dir_path) if config_paths and config_paths.tests_dir_path else "",
+            test_scenario_path=str(config_paths.test_scenario_path) if config_paths is not None else "",
             cloudai_execution_node=socket.gethostname(),
             env_vars=env_vars,
             num_nodes=tr.nnodes,
@@ -194,7 +198,7 @@ class TrainingParser(ABC):
 
     @staticmethod
     def _get_clique_size(env_vars: dict[str, Any]) -> Optional[int]:
-        clique_size = env_vars.get("CLIQUE_SIZE", None)
+        clique_size = env_vars.get("CLIQUE_SIZE")
         try:
             return int(clique_size) if clique_size is not None else None
         except (TypeError, ValueError):

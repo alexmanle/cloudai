@@ -22,6 +22,7 @@ from typing import Any
 
 import pytest
 
+from cloudai.core import ConfigPaths
 from cloudai.models.scenario import ReportConfig
 from cloudai.report_generator.training import parser as parser_mod
 from cloudai.report_generator.training import reporter as report_mod
@@ -43,8 +44,8 @@ def _system(
     )
 
 
-def _scenario(name: str = "scenario") -> Any:
-    return types.SimpleNamespace(name=name)
+def _scenario(name: str = "scenario", config_paths: ConfigPaths | None = None) -> Any:
+    return types.SimpleNamespace(name=name, config_paths=config_paths)
 
 
 class _Test(types.SimpleNamespace):
@@ -420,10 +421,15 @@ def test_build_config_sets_identity_hardware_and_env(monkeypatch):
         extra_env_vars={"NCCL_MNNVL_ENABLE": "1", "CLIQUE_SIZE": "8"},
         docker_image_url="nvcr.io/nvidia/nemo:24.12",
     )
+    config_paths = ConfigPaths(
+        system_path=Path("/configs/system.toml"),
+        tests_dir_path=Path("/configs/tests"),
+        test_scenario_path=Path("/configs/scenario.toml"),
+    )
     config = parser._build_config(
         tr,
         _system(gpus_per_node=4, global_env_vars={"CUDA_HOME": "/usr/local/cuda", "CLIQUE_SIZE": "4"}),
-        _scenario("nightly"),
+        _scenario("nightly", config_paths),
     )
 
     results = TrainingResults(config=config, steps=[])
@@ -433,12 +439,24 @@ def test_build_config_sets_identity_hardware_and_env(monkeypatch):
     assert config.test_name == "dsv3_run"
     assert config.description == "a proxy run"
     assert config.test_scenario_name == "nightly"
+    assert config.system_path == "/configs/system.toml"
+    assert config.tests_dir_path == "/configs/tests"
+    assert config.test_scenario_path == "/configs/scenario.toml"
     assert config.container_image == "nvcr.io/nvidia/nemo:24.12"
     assert config.cloudai_execution_node == "cloudai-host"
     assert config.nodes == ["node-[01-08]"]
     assert config.gpus_per_node == 4
     assert config.clique_size == 8
     assert config.env_vars == {"CUDA_HOME": "/usr/local/cuda", "CLIQUE_SIZE": "8", "NCCL_MNNVL_ENABLE": "1"}
+
+
+def test_build_config_uses_empty_paths_without_config_provenance():
+    parser = NeMoRunParser()
+    parser.get_model_config = lambda tr: {}
+
+    config = parser._build_config(_tr(recipe_name="gpt3"), _system(gpus_per_node=None), _scenario())
+
+    assert (config.system_path, config.tests_dir_path, config.test_scenario_path) == ("", "", "")
 
 
 def test_build_config_invalid_clique_size_stays_none(caplog):
