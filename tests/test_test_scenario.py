@@ -35,7 +35,6 @@ from cloudai.core import (
     TestScenarioParser,
 )
 from cloudai.models.scenario import TestRunModel, TestScenarioModel
-from cloudai.report_generator.training import TrainingReportGenerationStrategy
 from cloudai.systems.slurm.slurm_system import SlurmSystem
 from cloudai.test_scenario_parser import calculate_total_time_limit, get_reporters
 from cloudai.workloads.ai_dynamo import AIDynamoReportGenerationStrategy, AIDynamoTestDefinition
@@ -720,12 +719,11 @@ class TestReporters:
                 {
                     CheckpointTimingReportGenerationStrategy,
                     MegatronRunReportGenerationStrategy,
-                    TrainingReportGenerationStrategy,
                 },
             ),
             (
                 MegatronBridgeTestDefinition,
-                {MegatronBridgeReportGenerationStrategy, TrainingReportGenerationStrategy},
+                {MegatronBridgeReportGenerationStrategy},
             ),
             (NCCLTestDefinition, {NcclTestPerformanceReportGenerationStrategy}),
             (NeMoLauncherTestDefinition, {NeMoLauncherReportGenerationStrategy}),
@@ -734,7 +732,6 @@ class TestReporters:
                 {
                     NeMoRunReportGenerationStrategy,
                     NeMoRunDataStoreReportGenerationStrategy,
-                    TrainingReportGenerationStrategy,
                 },
             ),
             (NemotronTestDefinition, {JaxToolboxReportGenerationStrategy}),

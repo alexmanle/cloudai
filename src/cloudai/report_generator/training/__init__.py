@@ -14,6 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .report_generation_strategy import TrainingReportGenerationStrategy
+from .reporter import TrainingReporter
 
-__all__ = ["TrainingReportGenerationStrategy"]
+__all__ = ["TrainingReporter"]

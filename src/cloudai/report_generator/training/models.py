@@ -120,6 +120,7 @@ class TrainingConfig:
     test_id: str  # scenario section id
     test_name: str  # test definition name
     description: str
+    test_scenario_name: str
     test_template_name: str
 
     # Environment

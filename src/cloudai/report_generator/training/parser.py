@@ -31,7 +31,7 @@ from typing import Any, ClassVar, Optional
 
 import yaml
 
-from cloudai.core import System, TestRun
+from cloudai.core import System, TestRun, TestScenario
 
 from .mappings import (
     MEGATRON_BRIDGE_MODEL_CONFIG,
@@ -108,10 +108,10 @@ class TrainingParser(ABC):
                 return False
         return True
 
-    def parse(self, tr: TestRun, system: System) -> TrainingResults:
+    def parse(self, tr: TestRun, system: System, test_scenario: TestScenario) -> TrainingResults:
         """Read TB scalars + the config artifact and assemble TrainingResults."""
         steps: list[TrainingStep] = self._build_steps(self._read_scalars(tr))
-        config: TrainingConfig = self._build_config(tr, system)
+        config: TrainingConfig = self._build_config(tr, system, test_scenario)
         aggregation = self._aggregate(steps, config)
         return TrainingResults(config=config, steps=steps, aggregation=aggregation)
 
@@ -156,13 +156,14 @@ class TrainingParser(ABC):
         }
         return TrainingStep(iteration=step, **field_values)
 
-    def _build_config(self, tr: TestRun, system: System) -> TrainingConfig:
+    def _build_config(self, tr: TestRun, system: System, test_scenario: TestScenario) -> TrainingConfig:
         """Map the framework + test config into TrainingConfig, then fill the CloudAI-computed fields."""
         env_vars = {**getattr(system, "global_env_vars", {}), **tr.test.extra_env_vars}
         config = TrainingConfig(
             test_id=tr.name,
             test_name=tr.test.name,
             description=tr.test.description,
+            test_scenario_name=test_scenario.name,
             test_template_name=tr.test.test_template_name,
             cloudai_execution_node=socket.gethostname(),
             env_vars=env_vars,

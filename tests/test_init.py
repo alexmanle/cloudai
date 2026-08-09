@@ -16,6 +16,7 @@
 
 
 from cloudai.core import Registry
+from cloudai.report_generator.training import TrainingReporter
 from cloudai.reporter import DSEReporter, PerTestReporter, StatusReporter, TarballReporter
 from cloudai.systems.kubernetes import KubernetesInstaller, KubernetesSystem
 from cloudai.systems.lsf import LSFInstaller, LSFSystem
@@ -280,6 +281,7 @@ def test_scenario_reports():
     scenario_reports = Registry().scenario_reports
     assert list(scenario_reports.keys()) == [
         "per_test",
+        "training",
         "moe_benchmark_throughput",
         "status",
         "dse",
@@ -294,6 +296,7 @@ def test_scenario_reports():
     ]
     assert list(scenario_reports.values()) == [
         PerTestReporter,
+        TrainingReporter,
         MoEBenchmarkThroughputReporter,
         StatusReporter,
         DSEReporter,
@@ -312,6 +315,7 @@ def test_report_configs():
     configs = Registry().report_configs
     assert list(configs.keys()) == [
         "per_test",
+        "training",
         "moe_benchmark_throughput",
         "status",
         "dse",
