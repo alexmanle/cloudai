@@ -67,7 +67,7 @@ class MetricCatalog:
     _dimensions: ClassVar[dict[str, DimensionDefinition]] = {}
 
     @classmethod
-    def metric(cls, key: str) -> MetricDefinition:
+    def get_metric(cls, key: str) -> MetricDefinition:
         try:
             return cls._metrics[key]
         except KeyError as exc:
@@ -75,7 +75,7 @@ class MetricCatalog:
             raise ValueError(f"Unknown SOL metric '{key}'. Available metrics: {available}") from exc
 
     @classmethod
-    def dimension(cls, key: str) -> DimensionDefinition:
+    def get_dimension(cls, key: str) -> DimensionDefinition:
         try:
             return cls._dimensions[key]
         except KeyError as exc:
@@ -83,8 +83,18 @@ class MetricCatalog:
             raise ValueError(f"Unknown metric dimension '{key}'. Available dimensions: {available}") from exc
 
     @classmethod
+    def register_metrics(cls, *metrics: MetricDefinition):
+        for metric in metrics:
+            cls._metrics[metric.key] = metric
+
+    @classmethod
+    def register_dimensions(cls, *dimensions: DimensionDefinition):
+        for dimension in dimensions:
+            cls._dimensions[dimension.key] = dimension
+
+    @classmethod
     def validate_dimensions(cls, values: Mapping[str, Any]) -> MetricDimensions:
-        return {key: cls.dimension(key).validate(value) for key, value in values.items()}
+        return {key: cls.get_dimension(key).validate(value) for key, value in values.items()}
 
 
 SIZE_BYTES = DimensionDefinition("size_bytes", "Size", Annotated[int, Field(strict=True, ge=0)])
@@ -110,19 +120,17 @@ LATENCY = MetricDefinition(
 )
 
 MetricCatalog._metrics = {metric.key: metric for metric in (BANDWIDTH, LATENCY)}
-MetricCatalog._dimensions = {
-    dimension.key: dimension
-    for dimension in (
-        SIZE_BYTES,
-        BATCH_SIZE,
-        OPERATION,
-        PLACEMENT,
-        BANDWIDTH_BASIS,
-        BACKEND,
-        SOURCE_MEMORY,
-        TARGET_MEMORY,
-    )
-}
+MetricCatalog.register_metrics(BANDWIDTH, LATENCY)
+MetricCatalog.register_dimensions(
+    SIZE_BYTES,
+    BATCH_SIZE,
+    OPERATION,
+    PLACEMENT,
+    BANDWIDTH_BASIS,
+    BACKEND,
+    SOURCE_MEMORY,
+    TARGET_MEMORY,
+)
 
 
 class SOLTarget(BaseModel):
@@ -155,7 +163,7 @@ def parse_sol_spec(value: dict[str, Any] | None) -> MetricSOLConfig:
 
     parsed: MetricSOLConfig = {}
     for metric_key, raw_targets in value.items():
-        MetricCatalog.metric(metric_key)
+        MetricCatalog.get_metric(metric_key)
         if not isinstance(raw_targets, list) or not raw_targets:
             raise ValueError(f"SOL metric '{metric_key}' must contain a non-empty list of targets")
         targets = [SOLTarget.model_validate(target) for target in raw_targets]
@@ -239,7 +247,7 @@ def assess_test_run_metrics(system: Any, test_run: Any) -> list[MetricAssessment
 
 def dimension_label(key: str) -> str:
     """Return a human-readable label for a registered dimension."""
-    return MetricCatalog.dimension(key).label
+    return MetricCatalog.get_dimension(key).label
 
 
 def format_dimension(key: str, value: object) -> str:
