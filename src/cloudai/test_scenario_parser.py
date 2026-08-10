@@ -38,7 +38,7 @@ from .core import (
 )
 from .models.scenario import TestRunModel, TestScenarioModel
 from .models.workload import TestDefinition
-from .test_parser import TestParser
+from .test_parser import TestParser, load_test_toml_file
 from .toml_utils import format_toml_decode_error
 
 
@@ -228,12 +228,25 @@ class TestScenarioParser:
             tc_defined = test_info.tdef_model_dump(by_alias=True)
             merged_data = deep_merge(test_defined, tc_defined)
             test = tp.load_test_definition(merged_data)
+        elif test_info.path:  # test referenced by file path, relative to this scenario file's directory
+            resolved_path = (self.file_path.parent / test_info.path).resolve()
+            if not resolved_path.is_file():
+                raise TestScenarioParsingError(
+                    f"Test case '{test_info.id}' references path '{test_info.path}', "
+                    f"which resolves to '{resolved_path}', but that file does not exist."
+                )
+            tp.current_file = resolved_path
+            with resolved_path.open() as fh:
+                test_defined = load_test_toml_file(fh, resolved_path)
+            tc_defined = test_info.tdef_model_dump(by_alias=True)
+            merged_data = deep_merge(test_defined, tc_defined)
+            test = tp.load_test_definition(merged_data)
         elif test_info.test_template_name:  # test fully defined in the scenario
             test = tp._parse_data(test_info.tdef_model_dump(by_alias=True))
         else:
             # this should never happen, because we check for this in the modelvalidator
             raise ValueError(
-                f"Cannot configure test case '{test_info.id}' with both 'test_name' and 'test_template_name'."
+                f"Test case '{test_info.id}' has none of 'test_name', 'path', or 'test_template_name' set."
             )
 
         return test

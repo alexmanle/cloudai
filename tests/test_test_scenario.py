@@ -33,6 +33,7 @@ from cloudai.core import (
     TestRun,
     TestScenario,
     TestScenarioParser,
+    TestScenarioParsingError,
 )
 from cloudai.models.scenario import TestRunModel, TestScenarioModel
 from cloudai.report_generator.training import TrainingReportGenerationStrategy
@@ -322,7 +323,8 @@ class TestInScenario:
         with pytest.raises(ValueError) as exc_info:
             TestRunModel.model_validate(spec)
         assert exc_info.match(
-            "When 'test_name' is not set, the following fields must be set: 'test_template_name', 'name', 'description'"
+            "When neither 'test_name' nor 'path' is set, the following fields must be set: "
+            "'test_template_name', 'name', 'description'"
         )
 
     def test_name_is_not_in_mapping(self, test_scenario_parser: TestScenarioParser):
@@ -349,7 +351,7 @@ class TestInScenario:
         spec = {"id": "1", "test_name": "nccl", "test_template_name": "NcclTest"}
         with pytest.raises(ValueError) as exc_info:
             TestRunModel.model_validate(spec)
-        assert exc_info.match("'test_template_name' must not be set if 'test_name' is set.")
+        assert exc_info.match("'test_template_name' must not be set if 'test_name' or 'path' is set.")
 
     def test_spec_with_unknown_test_type(self):
         with pytest.raises(ValueError) as exc_info:
@@ -359,7 +361,7 @@ class TestInScenario:
     def test_type_is_not_allowed_when_name_is_set(self):
         with pytest.raises(ValueError) as exc_info:
             TestRunModel(id="1", test_name="nccl", test_template_name="NcclTest")
-        assert exc_info.match("'test_template_name' must not be set if 'test_name' is set.")
+        assert exc_info.match("'test_template_name' must not be set if 'test_name' or 'path' is set.")
 
     def test_spec_without_base(self, test_scenario_parser: TestScenarioParser):
         model = TestScenarioModel.model_validate(
@@ -922,3 +924,104 @@ class TestNsysMerging:
         assert tdef.nsys is not None
         assert tdef.nsys.enable is False
         assert tdef.nsys.output == "/base/output"
+
+
+class TestPathReference:
+    def test_path_and_test_name_together_is_rejected(self):
+        with pytest.raises(ValueError) as exc_info:
+            TestRunModel(id="1", test_name="nccl", path="nccl.toml")
+        assert exc_info.match("'test_name' and 'path' must not both be set")
+
+    def test_path_and_test_template_name_together_is_rejected(self):
+        with pytest.raises(ValueError) as exc_info:
+            TestRunModel(id="1", path="nccl.toml", test_template_name="NcclTest")
+        assert exc_info.match("'test_template_name' must not be set if 'test_name' or 'path' is set.")
+
+    def test_path_alone_satisfies_the_base_requirement(self):
+        model = TestRunModel(id="1", path="nccl.toml")
+        assert model.path == "nccl.toml"
+
+    def test_path_is_resolved_relative_to_the_scenario_file(self, tmp_path: Path, slurm_system: SlurmSystem):
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "nccl.toml").write_text(
+            """
+            name = "nccl"
+            description = "desc"
+            test_template_name = "NcclTest"
+
+            [cmd_args]
+            docker_image_url = "fake://url/nccl"
+            """
+        )
+        scenario_path = tmp_path / "scenario.toml"
+        scenario_path.write_text("")  # only its parent directory matters for resolution
+        parser = TestScenarioParser(scenario_path, slurm_system, {}, {})
+
+        test_info = TestRunModel(id="1", path="tests/nccl.toml")
+        tdef = parser._prepare_tdef(test_info)
+
+        assert tdef.name == "nccl"
+        assert isinstance(tdef, NCCLTestDefinition)
+        assert tdef.cmd_args.docker_image_url == "fake://url/nccl"
+
+    def test_scenario_level_overrides_are_merged_over_the_referenced_file(
+        self, tmp_path: Path, slurm_system: SlurmSystem
+    ):
+        (tmp_path / "nccl.toml").write_text(
+            """
+            name = "nccl"
+            description = "desc"
+            test_template_name = "NcclTest"
+
+            [cmd_args]
+            docker_image_url = "fake://url/nccl"
+            """
+        )
+        scenario_path = tmp_path / "scenario.toml"
+        scenario_path.write_text("")
+        parser = TestScenarioParser(scenario_path, slurm_system, {}, {})
+
+        test_info = TestRunModel(id="1", path="nccl.toml", cmd_args=CmdArgs.model_validate({"nthreads": 42}))
+        tdef = parser._prepare_tdef(test_info)
+
+        assert tdef.cmd_args.nthreads == 42
+        assert tdef.cmd_args.docker_image_url == "fake://url/nccl"
+
+    def test_missing_referenced_file_raises_a_clear_error(self, tmp_path: Path, slurm_system: SlurmSystem):
+        scenario_path = tmp_path / "scenario.toml"
+        scenario_path.write_text("")
+        parser = TestScenarioParser(scenario_path, slurm_system, {}, {})
+
+        test_info = TestRunModel(id="1", path="does-not-exist.toml")
+        with pytest.raises(TestScenarioParsingError) as exc_info:
+            parser._prepare_tdef(test_info)
+
+        assert exc_info.match("does not exist")
+
+    def test_full_scenario_toml_with_path_reference(self, tmp_path: Path, slurm_system: SlurmSystem):
+        (tmp_path / "nccl.toml").write_text(
+            """
+            name = "nccl"
+            description = "desc"
+            test_template_name = "NcclTest"
+
+            [cmd_args]
+            docker_image_url = "fake://url/nccl"
+            """
+        )
+        scenario_path = tmp_path / "scenario.toml"
+        scenario_path.write_text(
+            """
+            name = "test"
+
+            [[Tests]]
+            id = "1"
+            path = "nccl.toml"
+            """
+        )
+        parser = TestScenarioParser(scenario_path, slurm_system, {}, {})
+        model = TestScenarioModel.model_validate(toml.loads(scenario_path.read_text()))
+
+        tdef = parser._prepare_tdef(model.tests[0])
+
+        assert tdef.name == "nccl"

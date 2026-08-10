@@ -71,6 +71,13 @@ class TestRunModel(BaseModel):
 
     id: str = Field(min_length=1)
     test_name: Optional[str] = None
+    path: Optional[str] = Field(
+        default=None,
+        description=(
+            "Path to a test TOML file, resolved relative to this scenario file's own directory. "
+            "Alternative to 'test_name': references a test by file location instead of by name."
+        ),
+    )
     num_nodes: int | list[int] | None = None
     nodes: list[str] = Field(default_factory=list)
     exclude_nodes: list[str] = Field(
@@ -126,14 +133,17 @@ class TestRunModel(BaseModel):
 
     @model_validator(mode="after")
     def check_test_name_or_type_is_set(self):
-        has_base = self.test_name is not None
+        if self.test_name is not None and self.path is not None:
+            raise ValueError("'test_name' and 'path' must not both be set; use only one to reference a test.")
+
+        has_base = self.test_name is not None or self.path is not None
         if not has_base and (self.test_template_name is None or self.name is None or self.description is None):
             raise ValueError(
-                "When 'test_name' is not set, the following fields must be set: "
+                "When neither 'test_name' nor 'path' is set, the following fields must be set: "
                 "'test_template_name', 'name', 'description'."
             )
 
-        if not self.test_name:
+        if not has_base:
             if not self.test_template_name:
                 raise ValueError("'test_template_name' must be set if 'test_name' is not set.")
 
@@ -145,7 +155,7 @@ class TestRunModel(BaseModel):
                 )
         else:
             if self.test_template_name:
-                raise ValueError("'test_template_name' must not be set if 'test_name' is set.")
+                raise ValueError("'test_template_name' must not be set if 'test_name' or 'path' is set.")
 
         return self
 
