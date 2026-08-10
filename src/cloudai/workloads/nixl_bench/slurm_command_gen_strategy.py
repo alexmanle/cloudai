@@ -20,6 +20,8 @@ from cloudai.workloads.common.nixl import NIXLCmdGenBase
 
 from .nixl_bench import NIXLBenchTestDefinition
 
+STORAGE_BACKENDS = {"AZURE_BLOB", "GDS", "GDS_MT", "GUSLI", "HF3FS", "OBJ", "POSIX"}
+
 
 class NIXLBenchSlurmCommandGenStrategy(NIXLCmdGenBase):
     """Command generation strategy for NIXL Bench tests."""
@@ -31,19 +33,36 @@ class NIXLBenchSlurmCommandGenStrategy(NIXLCmdGenBase):
     def _gen_srun_command(self) -> str:
         self.create_env_vars_file()
 
-        self._current_image_url = str(self.tdef.docker_image.installed_path)
-        etcd_command: list[str] = self.gen_etcd_srun_command(self.tdef.cmd_args.etcd_path)
-        nixl_commands = self.gen_nixlbench_srun_commands(
-            self.gen_nixlbench_command(), str(self.tdef.cmd_args_dict.get("backend", "unset"))
-        )
-        self._current_image_url = None
+        backend = str(self.tdef.cmd_args_dict.get("backend", "unset"))
+        if (
+            self.tdef.cmd_args.runtime_type == "ETCD"
+            and not self.tdef.cmd_args.etcd_endpoints
+            and backend.upper() not in STORAGE_BACKENDS
+        ):
+            raise ValueError("NIXLBench can run without ETCD or ASIO only with a storage backend.")
 
-        commands: list[str] = [
+        self._current_image_url = str(self.tdef.docker_image.installed_path)
+        try:
+            nixl_commands = self.gen_nixlbench_srun_commands(self.gen_nixlbench_command(), backend)
+            if self.tdef.cmd_args.runtime_type == "ASIO" and len(nixl_commands) != 2:
+                raise ValueError(f"ASIO runtime requires exactly two NIXLBench processes, got {len(nixl_commands)}.")
+
+            commands = [
+                *[" ".join(cmd) + " &\nsleep 15" for cmd in nixl_commands[:-1]],
+                " ".join(nixl_commands[-1]),
+            ]
+            if not self.tdef.uses_etcd:
+                return "\n".join(commands)
+
+            etcd_command: list[str] = self.gen_etcd_srun_command(self.tdef.cmd_args.etcd_path)
+        finally:
+            self._current_image_url = None
+
+        commands = [
             " ".join(etcd_command),
             "etcd_pid=$!",
-            " ".join(self.gen_wait_for_etcd_command()),
-            *[" ".join(cmd) + " &\nsleep 15" for cmd in nixl_commands[:-1]],
-            " ".join(nixl_commands[-1]),
+            " ".join(self.gen_wait_for_etcd_command(self.tdef.cmd_args.wait_etcd_for)),
+            *commands,
             " ".join(self.gen_kill_and_wait_cmd("etcd_pid")),
         ]
         return "\n".join(commands)

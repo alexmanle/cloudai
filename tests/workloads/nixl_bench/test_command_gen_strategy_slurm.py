@@ -69,6 +69,30 @@ class TestNIXLBenchCommand:
         for k, v in in_args.items():
             assert f"--{k}={v}" in cmd
 
+    def test_asio_runtime_args(self, nixl_bench_tr: TestRun, slurm_system: SlurmSystem):
+        tdef = cast(NIXLBenchTestDefinition, nixl_bench_tr.test)
+        tdef.cmd_args.runtime_type = "ASIO"
+        strategy = NIXLBenchSlurmCommandGenStrategy(slurm_system, nixl_bench_tr)
+
+        assert strategy.gen_nixlbench_command() == [
+            "./nixlbench",
+            "--runtime_type=ASIO",
+            "--asio_address=$NIXL_ASIO_ADDRESS",
+            "--asio_port=12345",
+        ]
+        assert not tdef.uses_etcd
+
+    def test_runtime_type_is_case_insensitive(self):
+        cmd_args = NIXLBenchCmdArgs.model_validate(
+            {
+                "docker_image_url": "docker.io/library/ubuntu:22.04",
+                "path_to_benchmark": "nixlbench",
+                "runtime_type": "asio",
+            }
+        )
+
+        assert cmd_args.runtime_type == "ASIO"
+
     def test_container_mounts(self, nixl_bench_tr: TestRun, slurm_system: SlurmSystem):
         nixl_bench_tr.test.cmd_args = NIXLBenchCmdArgs.model_validate(
             {
@@ -261,6 +285,79 @@ def test_gen_srun_command(nixl_bench_tr: TestRun, slurm_system: SlurmSystem):
         "  exit 1\n",
         "}",
     ]
+
+
+@pytest.mark.parametrize("num_nodes", [1, 2])
+def test_asio_srun_lifecycle(nixl_bench_tr: TestRun, slurm_system: SlurmSystem, num_nodes: int) -> None:
+    nixl_bench_tr.num_nodes = num_nodes
+    tdef = cast(NIXLBenchTestDefinition, nixl_bench_tr.test)
+    tdef.cmd_args.runtime_type = "ASIO"
+    nixl_bench_tr.test.cmd_args.backend = "UCX"
+    strategy = NIXLBenchSlurmCommandGenStrategy(slurm_system, nixl_bench_tr)
+
+    command = strategy.gen_srun_command()
+
+    assert command.count("nixlbench --runtime_type=ASIO") == 2
+    assert "--asio_address=$NIXL_ASIO_ADDRESS" in command
+    assert "etcd_pid" not in command
+    assert "until curl" not in command
+    if num_nodes == 1:
+        assert command.count("--nodelist=$SLURM_JOB_MASTER_NODE") == 2
+    else:
+        assert "sed -n '1p'" in command
+        assert "sed -n '2p'" in command
+
+
+def test_etcd_srun_lifecycle(nixl_bench_tr: TestRun, slurm_system: SlurmSystem) -> None:
+    strategy = NIXLBenchSlurmCommandGenStrategy(slurm_system, nixl_bench_tr)
+
+    command = strategy.gen_srun_command()
+
+    assert "etcd_pid=$!" in command
+    assert "until curl" in command
+    assert "kill -TERM $etcd_pid" in command
+
+
+def test_storage_backend_without_runtime(nixl_bench_tr: TestRun, slurm_system: SlurmSystem) -> None:
+    tdef = cast(NIXLBenchTestDefinition, nixl_bench_tr.test)
+    nixl_bench_tr.test.cmd_args.backend = "POSIX"
+    tdef.cmd_args.etcd_endpoints = ""
+    strategy = NIXLBenchSlurmCommandGenStrategy(slurm_system, nixl_bench_tr)
+
+    command = strategy.gen_srun_command()
+
+    assert command.count("nixlbench") == 1
+    assert "--etcd-endpoints=" in command
+    assert "etcd_pid" not in command
+    assert "until curl" not in command
+
+
+def test_network_backend_without_runtime_is_rejected(nixl_bench_tr: TestRun, slurm_system: SlurmSystem) -> None:
+    tdef = cast(NIXLBenchTestDefinition, nixl_bench_tr.test)
+    nixl_bench_tr.test.cmd_args.backend = "UCX"
+    tdef.cmd_args.etcd_endpoints = ""
+    strategy = NIXLBenchSlurmCommandGenStrategy(slurm_system, nixl_bench_tr)
+
+    with pytest.raises(ValueError, match="only with a storage backend"):
+        strategy.gen_srun_command()
+
+
+def test_asio_does_not_install_custom_etcd_image(nixl_bench_tr: TestRun) -> None:
+    tdef = cast(NIXLBenchTestDefinition, nixl_bench_tr.test)
+    tdef.cmd_args.runtime_type = "ASIO"
+    tdef.cmd_args.etcd_image_url = "docker.io/library/etcd:latest"
+
+    assert tdef.etcd_image not in tdef.installables
+
+
+def test_asio_rejects_non_pairwise_process_shape(nixl_bench_tr: TestRun, slurm_system: SlurmSystem) -> None:
+    tdef = cast(NIXLBenchTestDefinition, nixl_bench_tr.test)
+    tdef.cmd_args.runtime_type = "ASIO"
+    nixl_bench_tr.test.cmd_args.backend = "POSIX"
+    strategy = NIXLBenchSlurmCommandGenStrategy(slurm_system, nixl_bench_tr)
+
+    with pytest.raises(ValueError, match="ASIO runtime requires exactly two NIXLBench processes"):
+        strategy.gen_srun_command()
 
 
 def test_gen_kill_and_wait_cmd(nixl_bench_tr: TestRun, slurm_system: SlurmSystem) -> None:

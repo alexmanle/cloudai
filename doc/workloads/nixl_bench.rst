@@ -62,6 +62,32 @@ Test-in-Scenario example:
      target_seg_type = "DRAM"
      op_type = "WRITE"
 
+Runtime Coordination
+--------------------
+
+NIXLBench uses ETCD by default. CloudAI starts ETCD from the benchmark image when
+``etcd_image_url`` is omitted, or from the configured image otherwise.
+
+To use NIXLBench's direct two-process ASIO runtime instead, set:
+
+.. code-block:: toml
+
+   runtime_type = "ASIO"
+
+CloudAI resolves ``asio_address`` to the first allocated node by default and does not
+install or start ETCD. ``asio_address`` and ``asio_port`` can be overridden explicitly.
+ASIO requires exactly two NIXLBench processes. For UCX, a one-node test runs both
+processes locally, while a two-node test runs one process on each node.
+
+Storage backends can run without either runtime by using an empty ETCD endpoint:
+
+.. code-block:: toml
+
+   backend = "POSIX"
+   etcd_endpoints = ""
+
+This null-runtime mode is limited to storage backends and launches one NIXLBench process.
+
 API Documentation
 -----------------
 
