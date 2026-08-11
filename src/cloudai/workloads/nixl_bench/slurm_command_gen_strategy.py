@@ -50,7 +50,7 @@ class NIXLBenchSlurmCommandGenStrategy(NIXLCmdGenBase):
                 *[" ".join(cmd) + f" &\nsleep {process_start_delay}" for cmd in nixl_commands[:-1]],
                 " ".join(nixl_commands[-1]),
             ]
-            if not self.tdef.uses_etcd:
+            if not self.tdef.uses_managed_etcd:
                 return "\n".join(commands)
 
             etcd_command: list[str] = self.gen_etcd_srun_command(self.tdef.cmd_args.etcd_path)

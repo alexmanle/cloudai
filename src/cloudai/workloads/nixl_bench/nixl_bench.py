@@ -22,6 +22,7 @@ import pydantic
 
 from cloudai.core import JobStatusResult, TestRun
 from cloudai.workloads.common.nixl import (
+    MANAGED_ETCD_ENDPOINTS,
     NIXLBaseCmdArgs,
     NIXLBaseTestDefinition,
     NIXLExtendedCmdArgs,
@@ -33,7 +34,7 @@ class NIXLBenchCmdArgs(NIXLBaseCmdArgs, NIXLExtendedCmdArgs):
     """Command line arguments for a NIXL Bench test."""
 
     path_to_benchmark: str
-    etcd_endpoints: str = "http://$NIXL_ETCD_ENDPOINTS"
+    etcd_endpoints: str = MANAGED_ETCD_ENDPOINTS
     runtime_type: Literal["ETCD", "ASIO"] = "ETCD"
     asio_address: str = "$NIXL_ASIO_ADDRESS"
     asio_port: int = pydantic.Field(default=12345, ge=1, le=65535)
@@ -49,9 +50,9 @@ class NIXLBenchTestDefinition(NIXLBaseTestDefinition[NIXLBenchCmdArgs]):
     """Test definition for a NIXL Bench test."""
 
     @property
-    def uses_etcd(self) -> bool:
+    def uses_managed_etcd(self) -> bool:
         """Return whether CloudAI should launch ETCD for this benchmark."""
-        return self.cmd_args.runtime_type == "ETCD" and bool(self.cmd_args.etcd_endpoints)
+        return self.cmd_args.runtime_type == "ETCD" and self.cmd_args.etcd_endpoints == MANAGED_ETCD_ENDPOINTS
 
     @property
     def uses_asio(self) -> bool:
@@ -76,6 +77,8 @@ class NIXLBenchTestDefinition(NIXLBaseTestDefinition[NIXLBenchCmdArgs]):
             cmd_args.pop("runtime_type")
             cmd_args.pop("asio_address")
             cmd_args.pop("asio_port")
+            if not self.cmd_args.etcd_endpoints:
+                cmd_args.pop("etcd_endpoints")
         else:
             # ASIO performs direct peer-to-peer coordination and does not use ETCD endpoints.
             cmd_args.pop("etcd_endpoints")

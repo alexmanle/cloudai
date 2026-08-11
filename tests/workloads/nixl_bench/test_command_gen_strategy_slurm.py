@@ -50,7 +50,8 @@ class TestNIXLBenchCommand:
         strategy = NIXLBenchSlurmCommandGenStrategy(slurm_system, nixl_bench_tr)
         cmd = strategy.gen_nixlbench_command()
         tdef: NIXLBenchTestDefinition = cast(NIXLBenchTestDefinition, nixl_bench_tr.test)
-        assert cmd == ["./nixlbench", f"--etcd-endpoints={tdef.cmd_args.etcd_endpoints}"]
+        assert cmd == ["./nixlbench", "--etcd-endpoints=http://$NIXL_ETCD_ENDPOINTS"]
+        assert tdef.uses_managed_etcd
         assert not tdef.uses_asio
         assert "NIXL_ASIO_ADDRESS" not in strategy.final_env_vars
 
@@ -82,7 +83,7 @@ class TestNIXLBenchCommand:
             "--asio_address=$NIXL_ASIO_ADDRESS",
             "--asio_port=12345",
         ]
-        assert not tdef.uses_etcd
+        assert not tdef.uses_managed_etcd
         assert tdef.uses_asio
         assert "NIXL_ASIO_ADDRESS" in strategy.final_env_vars
 
@@ -114,7 +115,7 @@ class TestNIXLBenchCommand:
             "--filepath=/data",
             "--total_buffer_size=1024",
             "--device_list=11:K:/dev/nvme0n1,12:F:/p1/store0.bin,13:F:/p2/store0.bin",
-            f"--etcd-endpoints={nixl_bench_tr.test.cmd_args.etcd_endpoints}",
+            "--etcd-endpoints=http://$NIXL_ETCD_ENDPOINTS",
             "--backend=GUSLI",
         ]
 
@@ -284,7 +285,35 @@ def test_storage_backend_without_runtime(nixl_bench_tr: TestRun, slurm_system: S
     command = strategy.gen_srun_command()
 
     assert command.count("nixlbench") == 1
-    assert "--etcd-endpoints=" in command
+    assert "--etcd-endpoints" not in command
+    assert "etcd_pid" not in command
+    assert "until curl" not in command
+
+
+def test_managed_etcd_lifecycle(nixl_bench_tr: TestRun, slurm_system: SlurmSystem) -> None:
+    tdef = cast(NIXLBenchTestDefinition, nixl_bench_tr.test)
+    nixl_bench_tr.test.cmd_args.backend = "UCX"
+    strategy = NIXLBenchSlurmCommandGenStrategy(slurm_system, nixl_bench_tr)
+
+    command = strategy.gen_srun_command()
+
+    assert tdef.uses_managed_etcd
+    assert "--etcd-endpoints=http://$NIXL_ETCD_ENDPOINTS" in command
+    assert "etcd_pid=$!" in command
+    assert "until curl" in command
+    assert "kill -TERM $etcd_pid" in command
+
+
+def test_external_etcd_is_passed_through(nixl_bench_tr: TestRun, slurm_system: SlurmSystem) -> None:
+    tdef = cast(NIXLBenchTestDefinition, nixl_bench_tr.test)
+    nixl_bench_tr.test.cmd_args.backend = "UCX"
+    tdef.cmd_args.etcd_endpoints = "http://etcd.example:2379"
+    strategy = NIXLBenchSlurmCommandGenStrategy(slurm_system, nixl_bench_tr)
+
+    command = strategy.gen_srun_command()
+
+    assert not tdef.uses_managed_etcd
+    assert "--etcd-endpoints=http://etcd.example:2379" in command
     assert "etcd_pid" not in command
     assert "until curl" not in command
 
