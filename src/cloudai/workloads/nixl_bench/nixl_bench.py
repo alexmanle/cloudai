@@ -44,7 +44,7 @@ class NIXLBenchTestDefinition(NIXLBaseTestDefinition[NIXLBenchCmdArgs]):
     """Test definition for a NIXL Bench test."""
 
     @property
-    def uses_managed_etcd(self) -> bool:
+    def uses_etcd(self) -> bool:
         """Return whether CloudAI should launch ETCD for this benchmark."""
         return self.cmd_args.runtime_type == "ETCD" and self.cmd_args.etcd_endpoints == MANAGED_ETCD_ENDPOINTS
 

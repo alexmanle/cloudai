@@ -147,7 +147,7 @@ class NIXLBaseTestDefinition(TestDefinition, Generic[NIXLCmdArgsT]):
         return self._etcd_image
 
     @property
-    def uses_managed_etcd(self) -> bool:
+    def uses_etcd(self) -> bool:
         """Return whether this workload needs CloudAI to manage an ETCD server."""
         return True
 
@@ -159,7 +159,7 @@ class NIXLBaseTestDefinition(TestDefinition, Generic[NIXLCmdArgsT]):
     @property
     def installables(self) -> list[Installable]:
         installables = [self.docker_image, *self.git_repos]
-        if self.uses_managed_etcd and self.etcd_image:
+        if self.uses_etcd and self.etcd_image:
             installables.append(self.etcd_image)
         return installables
 
@@ -266,7 +266,7 @@ class NIXLCmdGenBase(EtcdCmdGenMixin):
     def final_env_vars(self) -> dict[str, str | list[str]]:
         env_vars = super().final_env_vars
         tdef = cast(NIXLBaseTestDefinition[NIXLBaseCmdArgs], self.test_run.test)
-        if tdef.uses_managed_etcd:
+        if tdef.uses_etcd:
             env_vars["NIXL_ETCD_NAMESPACE"] = "/nixl/kvbench/$(uuidgen)"
             env_vars["NIXL_ETCD_ENDPOINTS"] = '"$SLURM_JOB_MASTER_NODE:2379"'
         env_vars["SLURM_JOB_MASTER_NODE"] = "$(scontrol show hostname $SLURM_JOB_NODELIST | head -n 1)"

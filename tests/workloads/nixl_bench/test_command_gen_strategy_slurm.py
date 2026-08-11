@@ -51,7 +51,7 @@ class TestNIXLBenchCommand:
         cmd = strategy.gen_nixlbench_command()
         tdef: NIXLBenchTestDefinition = cast(NIXLBenchTestDefinition, nixl_bench_tr.test)
         assert cmd == ["./nixlbench", "--etcd-endpoints=http://$NIXL_ETCD_ENDPOINTS"]
-        assert tdef.uses_managed_etcd
+        assert tdef.uses_etcd
         assert not tdef.uses_asio
         assert "NIXL_ASIO_ADDRESS" not in strategy.final_env_vars
 
@@ -83,7 +83,7 @@ class TestNIXLBenchCommand:
             "--asio_address=$NIXL_ASIO_ADDRESS",
             "--asio_port=12345",
         ]
-        assert not tdef.uses_managed_etcd
+        assert not tdef.uses_etcd
         assert tdef.uses_asio
         assert "NIXL_ASIO_ADDRESS" in strategy.final_env_vars
 
@@ -286,7 +286,7 @@ def test_managed_etcd_lifecycle(nixl_bench_tr: TestRun, slurm_system: SlurmSyste
 
     command = strategy.gen_srun_command()
 
-    assert tdef.uses_managed_etcd
+    assert tdef.uses_etcd
     assert "--etcd-endpoints=http://$NIXL_ETCD_ENDPOINTS" in command
     assert "etcd_pid=$!" in command
     assert "until curl" in command
@@ -301,7 +301,7 @@ def test_external_etcd_is_passed_through(nixl_bench_tr: TestRun, slurm_system: S
 
     command = strategy.gen_srun_command()
 
-    assert not tdef.uses_managed_etcd
+    assert not tdef.uses_etcd
     assert "--etcd-endpoints=http://etcd.example:2379" in command
     assert "etcd_pid" not in command
     assert "until curl" not in command
