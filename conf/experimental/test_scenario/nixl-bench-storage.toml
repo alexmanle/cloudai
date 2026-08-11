@@ -32,6 +32,3 @@ num_nodes = 1
 time_limit = "00:05:00"
 test_name = "nixl-bench-posix"
 description = "NIXLBench POSIX smoke test with managed ETCD"
-
-  [Tests.cmd_args]
-  runtime_type = "ETCD"
