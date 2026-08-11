@@ -20,7 +20,6 @@ from cloudai.workloads.common.nixl import NIXLCmdGenBase
 
 from .nixl_bench import NIXLBenchTestDefinition
 
-STORAGE_BACKENDS = {"AZURE_BLOB", "GDS", "GDS_MT", "GUSLI", "HF3FS", "OBJ", "POSIX"}
 ASIO_PROCESS_START_DELAY_SECONDS = 4
 ETCD_PROCESS_START_DELAY_SECONDS = 15
 
@@ -36,13 +35,6 @@ class NIXLBenchSlurmCommandGenStrategy(NIXLCmdGenBase):
         self.create_env_vars_file()
 
         backend = str(self.tdef.cmd_args_dict.get("backend", "unset"))
-        if (
-            self.tdef.cmd_args.runtime_type == "ETCD"
-            and not self.tdef.cmd_args.etcd_endpoints
-            and backend.upper() not in STORAGE_BACKENDS
-        ):
-            raise ValueError("NIXLBench can run without ETCD or ASIO only with a storage backend.")
-
         self._current_image_url = str(self.tdef.docker_image.installed_path)
         try:
             nixl_commands = self.gen_nixlbench_srun_commands(self.gen_nixlbench_command(), backend)

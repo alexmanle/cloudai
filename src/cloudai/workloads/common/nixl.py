@@ -151,8 +151,8 @@ class NIXLBaseTestDefinition(TestDefinition, Generic[NIXLCmdArgsT]):
         return True
 
     @property
-    def supports_asio(self) -> bool:
-        """Return whether this workload supports NIXLBench's ASIO runtime."""
+    def uses_asio(self) -> bool:
+        """Return whether this workload uses NIXLBench's ASIO runtime."""
         return False
 
     @property
@@ -269,7 +269,7 @@ class NIXLCmdGenBase(EtcdCmdGenMixin):
             env_vars["NIXL_ETCD_NAMESPACE"] = "/nixl/kvbench/$(uuidgen)"
             env_vars["NIXL_ETCD_ENDPOINTS"] = '"$SLURM_JOB_MASTER_NODE:2379"'
         env_vars["SLURM_JOB_MASTER_NODE"] = "$(scontrol show hostname $SLURM_JOB_NODELIST | head -n 1)"
-        if tdef.supports_asio:
+        if tdef.uses_asio:
             env_vars["NIXL_ASIO_ADDRESS"] = (
                 "$(getent ahostsv4 \"$SLURM_JOB_MASTER_NODE\" | awk 'NR == 1 {print $1; exit}')"
             )

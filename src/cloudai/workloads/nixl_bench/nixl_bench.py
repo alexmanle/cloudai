@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import Field, field_validator
+import pydantic
 
 from cloudai.core import JobStatusResult, TestRun
 from cloudai.workloads.common.nixl import (
@@ -36,9 +36,9 @@ class NIXLBenchCmdArgs(NIXLBaseCmdArgs, NIXLExtendedCmdArgs):
     etcd_endpoints: str = "http://$NIXL_ETCD_ENDPOINTS"
     runtime_type: Literal["ETCD", "ASIO"] = "ETCD"
     asio_address: str = "$NIXL_ASIO_ADDRESS"
-    asio_port: int = Field(default=12345, ge=1, le=65535)
+    asio_port: int = pydantic.Field(default=12345, ge=1, le=65535)
 
-    @field_validator("runtime_type", mode="before")
+    @pydantic.field_validator("runtime_type", mode="before")
     @classmethod
     def normalize_runtime_type(cls, value: str) -> str:
         """Normalize the upstream NIXLBench runtime name."""
@@ -54,9 +54,9 @@ class NIXLBenchTestDefinition(NIXLBaseTestDefinition[NIXLBenchCmdArgs]):
         return self.cmd_args.runtime_type == "ETCD" and bool(self.cmd_args.etcd_endpoints)
 
     @property
-    def supports_asio(self) -> bool:
-        """Return whether this workload supports NIXLBench's ASIO runtime."""
-        return True
+    def uses_asio(self) -> bool:
+        """Return whether this benchmark uses NIXLBench's ASIO runtime."""
+        return self.cmd_args.runtime_type == "ASIO"
 
     @property
     def cmd_args_dict(self) -> dict[str, str | list[str]]:
