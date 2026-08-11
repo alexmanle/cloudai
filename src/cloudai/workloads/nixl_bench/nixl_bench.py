@@ -39,12 +39,6 @@ class NIXLBenchCmdArgs(NIXLBaseCmdArgs, NIXLExtendedCmdArgs):
     asio_address: str = "$NIXL_ASIO_ADDRESS"
     asio_port: int = pydantic.Field(default=12345, ge=1, le=65535)
 
-    @pydantic.field_validator("runtime_type", mode="before")
-    @classmethod
-    def normalize_runtime_type(cls, value: str) -> str:
-        """Normalize the upstream NIXLBench runtime name."""
-        return value.upper()
-
 
 class NIXLBenchTestDefinition(NIXLBaseTestDefinition[NIXLBenchCmdArgs]):
     """Test definition for a NIXL Bench test."""

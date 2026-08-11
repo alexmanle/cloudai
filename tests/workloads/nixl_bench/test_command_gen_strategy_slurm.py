@@ -87,17 +87,6 @@ class TestNIXLBenchCommand:
         assert tdef.uses_asio
         assert "NIXL_ASIO_ADDRESS" in strategy.final_env_vars
 
-    def test_runtime_type_is_case_insensitive(self):
-        cmd_args = NIXLBenchCmdArgs.model_validate(
-            {
-                "docker_image_url": "docker.io/library/ubuntu:22.04",
-                "path_to_benchmark": "nixlbench",
-                "runtime_type": "asio",
-            }
-        )
-
-        assert cmd_args.runtime_type == "ASIO"
-
     def test_container_mounts(self, nixl_bench_tr: TestRun, slurm_system: SlurmSystem):
         nixl_bench_tr.test.cmd_args = NIXLBenchCmdArgs.model_validate(
             {
