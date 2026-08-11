@@ -941,6 +941,11 @@ class TestPathReference:
         model = TestRunModel(id="1", path="nccl.toml")
         assert model.path == "nccl.toml"
 
+    def test_empty_path_is_rejected(self):
+        with pytest.raises(ValueError) as exc_info:
+            TestRunModel(id="1", path="")
+        assert exc_info.match("String should have at least 1 character")
+
     def test_path_is_resolved_relative_to_the_scenario_file(self, tmp_path: Path, slurm_system: SlurmSystem):
         (tmp_path / "tests").mkdir()
         (tmp_path / "tests" / "nccl.toml").write_text(

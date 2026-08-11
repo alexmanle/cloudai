@@ -73,6 +73,7 @@ class TestRunModel(BaseModel):
     test_name: Optional[str] = None
     path: Optional[str] = Field(
         default=None,
+        min_length=1,
         description=(
             "Path to a test TOML file, resolved relative to this scenario file's own directory. "
             "Alternative to 'test_name': references a test by file location instead of by name."
