@@ -21,6 +21,8 @@ from cloudai.workloads.common.nixl import NIXLCmdGenBase
 from .nixl_bench import NIXLBenchTestDefinition
 
 STORAGE_BACKENDS = {"AZURE_BLOB", "GDS", "GDS_MT", "GUSLI", "HF3FS", "OBJ", "POSIX"}
+ASIO_PROCESS_START_DELAY_SECONDS = 4
+ETCD_PROCESS_START_DELAY_SECONDS = 15
 
 
 class NIXLBenchSlurmCommandGenStrategy(NIXLCmdGenBase):
@@ -47,8 +49,13 @@ class NIXLBenchSlurmCommandGenStrategy(NIXLCmdGenBase):
             if self.tdef.cmd_args.runtime_type == "ASIO" and len(nixl_commands) != 2:
                 raise ValueError(f"ASIO runtime requires exactly two NIXLBench processes, got {len(nixl_commands)}.")
 
+            process_start_delay = (
+                ASIO_PROCESS_START_DELAY_SECONDS
+                if self.tdef.cmd_args.runtime_type == "ASIO"
+                else ETCD_PROCESS_START_DELAY_SECONDS
+            )
             commands = [
-                *[" ".join(cmd) + " &\nsleep 15" for cmd in nixl_commands[:-1]],
+                *[" ".join(cmd) + f" &\nsleep {process_start_delay}" for cmd in nixl_commands[:-1]],
                 " ".join(nixl_commands[-1]),
             ]
             if not self.tdef.uses_etcd:

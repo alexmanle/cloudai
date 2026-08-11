@@ -301,6 +301,8 @@ def test_asio_srun_lifecycle(nixl_bench_tr: TestRun, slurm_system: SlurmSystem, 
     assert "--asio_address=$NIXL_ASIO_ADDRESS" in command
     assert "etcd_pid" not in command
     assert "until curl" not in command
+    assert "sleep 4" in command
+    assert "sleep 15" not in command
     if num_nodes == 1:
         assert command.count("--nodelist=$SLURM_JOB_MASTER_NODE") == 2
     else:
@@ -309,12 +311,15 @@ def test_asio_srun_lifecycle(nixl_bench_tr: TestRun, slurm_system: SlurmSystem, 
 
 
 def test_etcd_srun_lifecycle(nixl_bench_tr: TestRun, slurm_system: SlurmSystem) -> None:
+    nixl_bench_tr.num_nodes = 2
+    nixl_bench_tr.test.cmd_args.backend = "UCX"
     strategy = NIXLBenchSlurmCommandGenStrategy(slurm_system, nixl_bench_tr)
 
     command = strategy.gen_srun_command()
 
     assert "etcd_pid=$!" in command
     assert "until curl" in command
+    assert "sleep 15" in command
     assert "kill -TERM $etcd_pid" in command
 
 
