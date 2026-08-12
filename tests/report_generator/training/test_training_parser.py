@@ -16,24 +16,36 @@
 
 import logging
 import types
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from cloudai.core import ConfigPaths
+from cloudai.models.scenario import ReportConfig
 from cloudai.report_generator.training import parser as parser_mod
+from cloudai.report_generator.training import reporter as report_mod
 from cloudai.report_generator.training import tb_reader
-from cloudai.report_generator.training.models import Scalar, TrainingStep
+from cloudai.report_generator.training.models import SCHEMA_VERSION, Scalar, TrainingResults, TrainingStep
 from cloudai.report_generator.training.parser import MegatronBridgeParser, MegatronParser, NeMoRunParser
-from cloudai.report_generator.training.report_generation_strategy import TrainingReportGenerationStrategy
+from cloudai.report_generator.training.reporter import TrainingReporter
 
 
 def _scalars(rows: list[tuple]) -> list[Scalar]:
     return [Scalar(tag=tag, step=step, value=value, wall_time=wall_time) for tag, step, value, wall_time in rows]
 
 
-def _system(gpus_per_node: int | None = 4, ntasks_per_node: int | None = None) -> Any:
-    return types.SimpleNamespace(gpus_per_node=gpus_per_node, ntasks_per_node=ntasks_per_node)
+def _system(
+    gpus_per_node: int | None = 4, ntasks_per_node: int | None = None, global_env_vars: dict[str, Any] | None = None
+) -> Any:
+    return types.SimpleNamespace(
+        gpus_per_node=gpus_per_node, ntasks_per_node=ntasks_per_node, global_env_vars=global_env_vars or {}
+    )
+
+
+def _scenario(name: str = "scenario", config_paths: ConfigPaths | None = None) -> Any:
+    return types.SimpleNamespace(name=name, config_paths=config_paths)
 
 
 class _Test(types.SimpleNamespace):
@@ -54,6 +66,9 @@ def _tr(
     nsys: Any = None,
     extra_cmd_args: dict[str, Any] | None = None,
     training_report: dict[str, Any] | None = None,
+    description: str = "",
+    extra_env_vars: dict[str, Any] | None = None,
+    nodes: list[str] | None = None,
     **cmd_args: Any,
 ) -> Any:
     test = _Test(
@@ -63,8 +78,10 @@ def _tr(
         nsys=nsys,
         extra_cmd_args=extra_cmd_args or {},
         training_report=training_report,
+        description=description,
+        extra_env_vars=extra_env_vars or {},
     )
-    return types.SimpleNamespace(output_path=Path(output_path), nnodes=nnodes, test=test)
+    return types.SimpleNamespace(output_path=Path(output_path), nnodes=nnodes, name=name, nodes=nodes or [], test=test)
 
 
 def _nsys(enable: bool) -> Any:
@@ -233,18 +250,27 @@ def test_read_text_keeps_latest_wall_time(monkeypatch):
 def test_build_config_resolves_paths_and_computes_fields():
     raw = {
         "data": {"micro_batch_size": 1, "global_batch_size": 8},
-        "parallelism": {"tensor_model_parallel_size": 4, "pipeline_model_parallel_size": 1, "context_parallel_size": 1},
-        "model": {"num_layers": 30},
+        "parallelism": {
+            "tensor_model_parallel_size": 4,
+            "pipeline_model_parallel_size": 1,
+            "context_parallel_size": 1,
+            "expert_tensor_parallel_size": 4,
+        },
+        "model": {"num_layers": 30, "fp8": "hybrid", "fp8_recipe": "tensorwise"},
     }
     parser = NeMoRunParser()
     parser.get_model_config = lambda tr: raw
-    config = parser._build_config(_tr(nnodes=8, template="NeMoRun", recipe_name="gpt3"), _system(gpus_per_node=4))
+    config = parser._build_config(
+        _tr(nnodes=8, template="NeMoRun", recipe_name="gpt3"), _system(gpus_per_node=4), _scenario()
+    )
 
     assert config.test_template_name == "NeMoRun"  # CloudAI-computed
     assert config.micro_batch_size == 1  # nested dotted-path resolve
     assert config.num_layers == 30
     assert config.tensor_parallel_size == 4
+    assert config.expert_tensor_parallel_size == 4
     assert config.model_name == "gpt3"  # CloudAI-computed
+    assert (config.fp8, config.fp8_recipe) == ("hybrid", "tensorwise")
     assert (config.num_nodes, config.world_size) == (8, 32)  # 8 nodes x 4 gpus
     assert config.data_parallel_size == 8  # 32 / (tp4 * pp1 * cp1)
 
@@ -254,7 +280,7 @@ def test_build_config_leaves_world_size_none_without_gpus_per_node():
     raw = {"parallelism": {"tensor_model_parallel_size": 4, "pipeline_model_parallel_size": 1}}
     parser = NeMoRunParser()
     parser.get_model_config = lambda tr: raw
-    config = parser._build_config(_tr(nnodes=8, recipe_name="gpt3"), _system(gpus_per_node=None))
+    config = parser._build_config(_tr(nnodes=8, recipe_name="gpt3"), _system(gpus_per_node=None), _scenario())
 
     assert config.world_size is None
     assert config.data_parallel_size is None
@@ -270,15 +296,20 @@ def test_megatron_config_parses_string_literals(monkeypatch):
         "pipeline_model_parallel_size": "2",
         "context_parallel_size": "1",
         "sequence_parallel": "True",
+        "expert_tensor_parallel_size": "1",
+        "fp8": "e4m3",
+        "fp8_recipe": "mxfp8",
     }
     monkeypatch.setattr(parser_mod, "read_text", lambda _tb_dir: text)
 
     parser = MegatronParser()
-    config = parser._build_config(_tr(nnodes=16, name="dsv3"), _system(gpus_per_node=4))
+    config = parser._build_config(_tr(nnodes=16, name="dsv3"), _system(gpus_per_node=4), _scenario())
 
     assert config.micro_batch_size == 1  # "1" -> int
     assert config.sequence_parallel is True  # "True" -> bool
+    assert config.expert_tensor_parallel_size == 1
     assert config.model_name == "dsv3"
+    assert (config.fp8, config.fp8_recipe) == ("e4m3", "mxfp8")
     assert config.data_parallel_size == 16  # 64 / (tp2 * pp2 * cp1)
 
 
@@ -287,10 +318,10 @@ def test_compute_data_parallel_size_rejects_invalid_topology():
     parallel = {"tensor_model_parallel_size": 4, "pipeline_model_parallel_size": 1, "context_parallel_size": 1}
     parser.get_model_config = lambda tr: {"parallelism": parallel}
     with pytest.raises(ValueError, match="world_size"):  # world_size 34 is not a multiple of tp*pp*cp=4
-        parser._build_config(_tr(nnodes=17, recipe_name="x"), _system(gpus_per_node=2))
+        parser._build_config(_tr(nnodes=17, recipe_name="x"), _system(gpus_per_node=2), _scenario())
     parser.get_model_config = lambda tr: {"parallelism": {}}
     with pytest.raises(ValueError, match="tensor_parallel_size"):  # tp missing from the parsed config
-        parser._build_config(_tr(recipe_name="x"), _system())
+        parser._build_config(_tr(recipe_name="x"), _system(), _scenario())
 
 
 # --- profiling -----------------------------------------------------------------------------------
@@ -348,28 +379,103 @@ def test_megatron_bridge_profiling_reads_typed_fields():
 
 def test_build_config_sets_profiling_fields():
     # M-Bridge exposes enable + step bounds as typed cmd_args, so _build_config folds all three into the config.
-    raw = {"model": {"tensor_model_parallel_size": 4, "pipeline_model_parallel_size": 1}}
+    raw = {
+        "model": {
+            "tensor_model_parallel_size": 4,
+            "pipeline_model_parallel_size": 1,
+            "expert_tensor_parallel_size": 4,
+        },
+        "mixed_precision": {"fp8": "hybrid", "fp8_recipe": "tensorwise"},
+    }
     parser = MegatronBridgeParser()
     parser.get_model_config = lambda tr: raw
     tr = _tr(model_recipe_name="gpt3", enable_nsys=True, profiling_start_step=3, profiling_stop_step=7)
-    config = parser._build_config(tr, _system(gpus_per_node=4))
+    config = parser._build_config(tr, _system(gpus_per_node=4), _scenario())
 
     assert config.profiling_enabled is True
     assert (config.profiling_start_step, config.profiling_stop_step) == (3, 7)
+    assert config.expert_tensor_parallel_size == 4
+    assert (config.fp8, config.fp8_recipe) == ("hybrid", "tensorwise")
 
 
 def test_build_config_reads_aggregation_flags_from_toml():
     parser = NeMoRunParser()
     parser.get_model_config = lambda tr: {}
     tr = _tr(recipe_name="gpt3", training_report={"exclude_start_steps": 10, "exclude_post_profiling_steps": 3})
-    config = parser._build_config(tr, _system(gpus_per_node=None))
+    config = parser._build_config(tr, _system(gpus_per_node=None), _scenario())
     assert (config.exclude_start_steps, config.exclude_post_profiling_steps) == (10, 3)
+
+
+def test_build_config_sets_identity_hardware_and_env(monkeypatch):
+    monkeypatch.setattr(parser_mod.socket, "gethostname", lambda: "cloudai-host")
+    parser = NeMoRunParser()
+    parser.get_model_config = lambda tr: {
+        "parallelism": {"tensor_model_parallel_size": 4, "pipeline_model_parallel_size": 1}
+    }
+    tr = _tr(
+        name="dsv3_run",
+        template="NeMoRun",
+        recipe_name="gpt3",
+        description="a proxy run",
+        nodes=["node-[01-08]"],
+        extra_env_vars={"NCCL_MNNVL_ENABLE": "1", "CLIQUE_SIZE": "8"},
+        docker_image_url="nvcr.io/nvidia/nemo:24.12",
+    )
+    config_paths = ConfigPaths(
+        system_path=Path("/configs/system.toml"),
+        tests_dir_path=Path("/configs/tests"),
+        test_scenario_path=Path("/configs/scenario.toml"),
+    )
+    config = parser._build_config(
+        tr,
+        _system(gpus_per_node=4, global_env_vars={"CUDA_HOME": "/usr/local/cuda", "CLIQUE_SIZE": "4"}),
+        _scenario("nightly", config_paths),
+    )
+
+    results = TrainingResults(config=config, steps=[])
+    assert results.schema_version == SCHEMA_VERSION
+    assert next(iter(asdict(results))) == "schema_version"
+    assert config.test_id == "dsv3_run"
+    assert config.test_name == "dsv3_run"
+    assert config.description == "a proxy run"
+    assert config.test_scenario_name == "nightly"
+    assert config.system_path == "/configs/system.toml"
+    assert config.tests_dir_path == "/configs/tests"
+    assert config.test_scenario_path == "/configs/scenario.toml"
+    assert config.container_image == "nvcr.io/nvidia/nemo:24.12"
+    assert config.cloudai_execution_node == "cloudai-host"
+    assert config.nodes == ["node-[01-08]"]
+    assert config.gpus_per_node == 4
+    assert config.clique_size == 8
+    assert config.env_vars == {"CUDA_HOME": "/usr/local/cuda", "CLIQUE_SIZE": "8", "NCCL_MNNVL_ENABLE": "1"}
+
+
+def test_build_config_uses_empty_paths_without_config_provenance():
+    parser = NeMoRunParser()
+    parser.get_model_config = lambda tr: {}
+
+    config = parser._build_config(_tr(recipe_name="gpt3"), _system(gpus_per_node=None), _scenario())
+
+    assert (config.system_path, config.tests_dir_path, config.test_scenario_path) == ("", "", "")
+
+
+def test_build_config_invalid_clique_size_stays_none(caplog):
+    parser = NeMoRunParser()
+    parser.get_model_config = lambda tr: {}
+    config = parser._build_config(
+        _tr(recipe_name="gpt3", extra_env_vars={"CLIQUE_SIZE": "invalid"}),
+        _system(gpus_per_node=None),
+        _scenario(),
+    )
+
+    assert config.clique_size is None
+    assert "CLIQUE_SIZE" not in caplog.text
 
 
 def test_build_config_aggregation_flags_default_when_absent():
     parser = NeMoRunParser()
     parser.get_model_config = lambda tr: {}
-    config = parser._build_config(_tr(recipe_name="gpt3"), _system(gpus_per_node=None))
+    config = parser._build_config(_tr(recipe_name="gpt3"), _system(gpus_per_node=None), _scenario())
     assert (config.exclude_start_steps, config.exclude_post_profiling_steps) == (5, 2)
 
 
@@ -543,5 +649,31 @@ def test_training_report_json_default_supports_scalar_item():
         def __str__(self):
             return "fallback"
 
-    assert TrainingReportGenerationStrategy._json_default(ScalarWithItem()) == 7
-    assert TrainingReportGenerationStrategy._json_default(StringFallback()) == "fallback"
+    assert TrainingReporter._json_default(ScalarWithItem()) == 7
+    assert TrainingReporter._json_default(StringFallback()) == "fallback"
+
+
+def test_training_reporter_passes_scenario(monkeypatch, tmp_path):
+    calls = []
+
+    class FakeParser:
+        def can_parse(self, tr):
+            calls.append(("can_parse", tr))
+            return True
+
+        def parse(self, tr, system, test_scenario):
+            calls.append(("parse", tr, system, test_scenario))
+            return object()
+
+    monkeypatch.setattr(TrainingReporter, "PARSERS", {"NeMoRun": FakeParser})
+    monkeypatch.setattr(report_mod, "asdict", lambda _: {"generated": True})
+    system = _system()
+    tr = _tr(output_path=tmp_path)
+    scenario = _scenario("nightly")
+    reporter = TrainingReporter(system, scenario, tmp_path, ReportConfig(enable=True))
+    monkeypatch.setattr(reporter, "load_test_runs", lambda: reporter.trs.append(tr))
+
+    reporter.generate()
+
+    assert calls == [("can_parse", tr), ("parse", tr, system, scenario)]
+    assert (tmp_path / "training_report.json").read_text() == '{\n  "generated": true\n}'

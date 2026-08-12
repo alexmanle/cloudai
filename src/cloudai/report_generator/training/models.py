@@ -21,6 +21,8 @@ from collections.abc import Hashable
 from dataclasses import MISSING, dataclass, fields
 from typing import Any, List, Optional
 
+SCHEMA_VERSION = "1.0"  # training report schema; bump on breaking changes to TrainingConfig/TrainingResults
+
 
 @dataclass
 class MetricStats:
@@ -111,9 +113,40 @@ class TrainingConfig:
     """
     Resolved training configuration from the framework artifact + CloudAI.
 
-    The CloudAI-computed fields (test_template_name, data_parallel_size, model_name, world_size, num_nodes) default
-    here and are filled in by the parser after construction.
+    CloudAI-computed fields are supplied by the parser during construction.
     """
+
+    # Test identity
+    test_id: str  # scenario section id
+    test_name: str  # test definition name
+    description: str
+    test_scenario_name: str
+    test_template_name: str
+
+    # Configuration sources
+    system_path: str
+    tests_dir_path: str
+    test_scenario_path: str
+
+    # Environment
+    container_image: str = ""
+    cloudai_execution_node: str
+    env_vars: dict[str, Any]  # system global env + test extra env
+
+    # Hardware
+    # Depends on: num_nodes, gpus_per_node
+    world_size: Optional[int] = None
+    # Populated from TestRun.nnodes.
+    num_nodes: int
+    gpus_per_node: Optional[int] = None
+    nodes: list[str]  # compressed nodelist from the scenario
+    # Depends on: env_vars["CLIQUE_SIZE"]
+    clique_size: Optional[int] = None
+
+    # Precision
+    fp8: Optional[str] = None
+    # Depends on: fp8
+    fp8_recipe: Optional[str] = None
 
     # Batch
     micro_batch_size: int
@@ -127,7 +160,9 @@ class TrainingConfig:
     virtual_pipeline_parallel_size: Optional[int]
     sequence_parallel: bool
     expert_parallel_size: int
-    data_parallel_size: Optional[int] = None  # CloudAI-computed (None when gpus_per_node is unavailable)
+    expert_tensor_parallel_size: int
+    # Depends on: world_size / (tensor_parallel_size * pipeline_parallel_size * context_parallel_size)
+    data_parallel_size: Optional[int] = None
 
     # Model architecture
     num_layers: int
@@ -146,27 +181,24 @@ class TrainingConfig:
     moe_ffn_hidden_size: Optional[int]
     moe_grouped_gemm: Optional[bool]
 
-    # Hardware
-    world_size: Optional[int] = None  # CloudAI-computed (None when gpus_per_node is unavailable)
-    num_nodes: int = 0  # CloudAI-computed
-
-    # Profiling (CloudAI-computed from the run's nsys/profiler settings)
+    # Profiling
     profiling_enabled: bool = False
+    # Depends on: profiling_enabled
     profiling_start_step: Optional[int] = None
+    # Depends on: profiling_enabled
     profiling_stop_step: Optional[int] = None
 
     # Aggregation window (steps dropped before computing the top-level aggregation)
     exclude_start_steps: int = 5
+    # Depends on: profiling_enabled, profiling_stop_step
     exclude_post_profiling_steps: int = 2
 
-    # Identity
-    test_template_name: str = ""  # CloudAI-computed
 
-
-@dataclass
+@dataclass(kw_only=True)
 class TrainingResults:
     """Container for parsed training output."""
 
+    schema_version: str = SCHEMA_VERSION
     config: TrainingConfig
     steps: List[TrainingStep]
     aggregation: Optional[StepAggregation] = None  # None when no steps remain after exclusions

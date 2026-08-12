@@ -22,7 +22,15 @@ import pytest
 import toml
 from pydantic_core import ErrorDetails
 
-from cloudai.core import Parser, Registry, Reporter, TestConfigParsingError, TestParser, format_validation_error
+from cloudai.core import (
+    ConfigPaths,
+    Parser,
+    Registry,
+    Reporter,
+    TestConfigParsingError,
+    TestParser,
+    format_validation_error,
+)
 from cloudai.models.scenario import ReportConfig, parse_reports_spec
 from cloudai.systems.slurm.slurm_system import SlurmSystem
 
@@ -65,6 +73,37 @@ class Test_Parser:
         _, tests, _ = parser.parse(None, None)
 
         assert "custom_hook_test" in {test.name for test in tests}
+
+    @patch("cloudai.parser.Parser.parse_test_scenario")
+    def test_parse_links_config_paths(self, parse_test_scenario: Mock, parser: Parser, tmp_path: Path):
+        tests_dir = tmp_path / "tests"
+        tests_dir.mkdir()
+        test_scenario_path = tmp_path / "test_scenario.toml"
+        parse_test_scenario.return_value = Mock(test_runs=[])
+        parser = Parser(parser.system_config_path, tmp_path / "hooks")
+
+        _, _, test_scenario = parser.parse(tests_dir, test_scenario_path)
+
+        assert test_scenario is not None
+        assert test_scenario.config_paths == ConfigPaths(
+            system_path=parser.system_config_path.resolve(),
+            tests_dir_path=tests_dir.resolve(),
+            test_scenario_path=test_scenario_path.resolve(),
+        )
+
+    @patch("cloudai.parser.Parser.parse_test_scenario")
+    def test_parse_links_config_paths_without_tests_dir(
+        self, parse_test_scenario: Mock, parser: Parser, tmp_path: Path
+    ):
+        test_scenario_path = tmp_path / "test_scenario.toml"
+        parse_test_scenario.return_value = Mock(test_runs=[])
+        parser = Parser(parser.system_config_path, tmp_path / "hooks")
+
+        _, _, test_scenario = parser.parse(None, test_scenario_path)
+
+        assert test_scenario is not None
+        assert test_scenario.config_paths is not None
+        assert test_scenario.config_paths.tests_dir_path is None
 
     def test_custom_hook_root_is_used_for_hook_scenario_resolution(self, parser: Parser, tmp_path: Path):
         """A hook *scenario* toml (referenced via pre_test) must also be resolved from the custom hook_root,
