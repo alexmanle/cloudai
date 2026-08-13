@@ -69,7 +69,7 @@ from .configurator.grid_search import GridSearchAgent
 from .configurator.gymnasium_adapter import GymnasiumAdapter
 from .models.workload import CmdArgs, NsysConfiguration, PredictorConfig, TestDefinition
 from .parser import Parser
-from .reporter import PerTestReporter, StatusReporter, TarballReporter
+from .reporter import JUnitReporter, PerTestReporter, StatusReporter, TarballReporter
 from .test_parser import TestParser
 from .test_scenario_parser import TestScenarioParser
 
@@ -97,6 +97,7 @@ __all__ = [
     "HFModel",
     "InstallStatusResult",
     "Installable",
+    "JUnitReporter",
     "JobIdRetrievalError",
     "JobStatusResult",
     "JsonGenStrategy",

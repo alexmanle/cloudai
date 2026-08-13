@@ -17,6 +17,7 @@
 import copy
 import csv
 import tarfile
+import xml.etree.ElementTree as ET
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -29,7 +30,7 @@ from cloudai.cli.handlers import generate_reports
 from cloudai.core import CommandGenStrategy, Registry, Reporter, System
 from cloudai.models.scenario import ReportConfig, TestRunDetails
 from cloudai.report_generator.dse_report import build_dse_summaries
-from cloudai.reporter import DSEReporter, PerTestReporter, ReportItem, StatusReporter, TarballReporter
+from cloudai.reporter import DSEReporter, JUnitReporter, PerTestReporter, ReportItem, StatusReporter, TarballReporter
 from cloudai.systems.slurm.slurm_metadata import (
     MetadataCUDA,
     MetadataMPI,
@@ -342,6 +343,60 @@ def test_report_order() -> None:
     assert reports[-3][0] == "status"
     assert reports[-2][0] == "dse"
     assert reports[-1][0] == "tarball"
+
+
+def test_junit_reporter_generates_testcases_with_status_logs_and_duration(
+    slurm_system: SlurmSystem, benchmark_tr: TestRun, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_dirs = [slurm_system.output_path / benchmark_tr.name / str(i) for i in range(benchmark_tr.iterations)]
+    for i, run_dir in enumerate(run_dirs):
+        (run_dir / "stdout.txt").write_text(f"stdout {i}\n")
+        (run_dir / "stderr.txt").write_text(f"stderr {i}\n")
+        _write_slurm_job(run_dir, i + 1)
+
+    statuses = {
+        run_dirs[0]: (True, ""),
+        run_dirs[1]: (False, "benchmark failed\x01"),
+        run_dirs[2]: (True, ""),
+    }
+
+    def was_run_successful(tr: TestRun):
+        successful, message = statuses[tr.output_path]
+        from cloudai.core import JobStatusResult
+
+        return JobStatusResult(successful, message)
+
+    monkeypatch.setattr(type(benchmark_tr.test), "was_run_successful", lambda self, tr: was_run_successful(tr))
+    reporter = JUnitReporter(
+        slurm_system,
+        TestScenario(name="test-scenario", test_runs=[benchmark_tr]),
+        slurm_system.output_path,
+        ReportConfig(),
+    )
+    reporter.generate()
+
+    root = ET.parse(slurm_system.output_path / "junit.xml").getroot()
+    suite = root.find("testsuite")
+    assert root.attrib == {
+        "name": "test-scenario",
+        "tests": "3",
+        "failures": "1",
+        "errors": "0",
+        "skipped": "0",
+        "time": "6",
+    }
+    assert suite is not None
+    cases = suite.findall("testcase")
+    assert [case.attrib for case in cases] == [
+        {"name": "benchmark", "classname": "test-scenario", "time": "1"},
+        {"name": "benchmark iter=1", "classname": "test-scenario", "time": "2"},
+        {"name": "benchmark iter=2", "classname": "test-scenario", "time": "3"},
+    ]
+    assert cases[0].findtext("system-out") == "stdout 0\n"
+    failure = cases[1].find("failure")
+    assert failure is not None
+    assert failure.attrib["message"] == "benchmark failed"
+    assert cases[1].findtext("system-err") == "stderr 1\n"
 
 
 def _write_slurm_job(step_dir: Path, elapsed_time_sec: int) -> None:

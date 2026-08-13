@@ -58,6 +58,12 @@ Enabling or disabling a report needs to be done in the system configuration:
    [reports]
    per_test = { enable = false }
    status = { enable = true }
+   junit = { enable = true }
+
+The ``junit`` scenario reporter writes ``junit.xml`` in the scenario results directory. It emits one test case for
+every regular test iteration and every DSE step, including pass/fail status, failure details, scheduler duration when
+available, and the contents of ``stdout.txt`` and ``stderr.txt``. The artifact can be consumed directly by Jenkins,
+GitLab, GitHub Actions, and other CI systems that support JUnit XML.
 
 Speed-of-Light comparisons
 --------------------------
