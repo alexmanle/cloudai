@@ -22,7 +22,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, ClassVar, Generic, TypeVar, cast
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from rich.console import Console
 from rich.table import Table
 from typing_extensions import Self
@@ -143,13 +143,6 @@ class LLMServingCmdArgs(CmdArgs, Generic[LLMServingArgsT]):
 
     docker_image_url: str
     model: str
-    model_path: str | None = Field(
-        default=None,
-        description=(
-            "Absolute, container-visible path to a local model. When set, the model is loaded from this path and "
-            "CloudAI does not download it from Hugging Face."
-        ),
-    )
     port: int = Field(default=8300, ge=1, le=65535)
     host: str = Field(default="0.0.0.0", description="Host/interface for serve or router processes to bind to.")
     bench_host: str | None = Field(
@@ -164,13 +157,6 @@ class LLMServingCmdArgs(CmdArgs, Generic[LLMServingArgsT]):
     serve_wait_seconds: int = 300
     prefill: LLMServingArgsT | None = Field(default=None)
     decode: LLMServingArgsT
-
-    @field_validator("model_path")
-    @classmethod
-    def validate_model_path(cls, model_path: str | None) -> str | None:
-        if model_path is not None and not Path(model_path).is_absolute():
-            raise ValueError("model_path must be an absolute path inside the container.")
-        return model_path
 
     @model_validator(mode="after")
     def validate_disaggregated_port(self) -> Self:
@@ -205,7 +191,7 @@ class LLMServingTestDefinition(TestDefinition, Generic[LLMServingCmdArgsT]):
     @property
     def installables(self) -> list[Installable]:
         installables: list[Installable] = [*self.git_repos, self.docker_image]
-        if self.cmd_args.model_path is None:
+        if not Path(self.cmd_args.model).is_absolute():
             installables.append(self.hf_model)
         return [*installables, *self.extra_installables]
 

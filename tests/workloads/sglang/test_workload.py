@@ -28,8 +28,7 @@ def test_local_model_is_not_installed_from_hugging_face() -> None:
         test_template_name="sglang",
         cmd_args=SglangCmdArgs(
             docker_image_url="test_url",
-            model="custom-model",
-            model_path="/models/custom-model",
+            model="/models/custom-model",
         ),
     )
 

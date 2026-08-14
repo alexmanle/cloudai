@@ -62,18 +62,12 @@ def test_local_model_is_not_installed_from_hugging_face() -> None:
         test_template_name="vllm",
         cmd_args=VllmCmdArgs(
             docker_image_url="test_url",
-            model="custom-model",
-            model_path="/models/custom-model",
+            model="/models/custom-model",
         ),
         proxy_script_repo=proxy_script_repo,
     )
 
     assert tdef.installables == [tdef.docker_image, proxy_script_repo]
-
-
-def test_local_model_path_must_be_absolute() -> None:
-    with pytest.raises(ValueError, match="model_path must be an absolute path"):
-        VllmCmdArgs(docker_image_url="test_url", model_path="models/custom-model")
 
 
 def test_constraint_check_rejects_tp_pp_dp_above_available_gpus(tmp_path) -> None:

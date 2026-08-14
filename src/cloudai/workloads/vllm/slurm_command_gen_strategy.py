@@ -105,10 +105,7 @@ class VllmSlurmCommandGenStrategy(LLMServingSlurmCommandGenStrategy[VllmCmdArgs]
         tdef: VllmTestDefinition = cast(VllmTestDefinition, self.test_run.test)
         cmd_args: VllmCmdArgs = tdef.cmd_args
 
-        model_source = cmd_args.model_path or cmd_args.model
-        base_cmd = ["vllm", "serve", model_source, "--host", self.bind_host]
-        if cmd_args.model_path is not None:
-            base_cmd.extend(["--served-model-name", cmd_args.model])
+        base_cmd = ["vllm", "serve", cmd_args.model, "--host", self.bind_host]
         if not tdef.cmd_args.prefill:
             return [
                 self._with_ray_backend(

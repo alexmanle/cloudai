@@ -72,9 +72,8 @@ supported under ``[[Tests]]`` in a test scenario. Define them in a test definiti
 
 Local Models
 ------------
-Set ``cmd_args.model_path`` to load an existing model directory instead of downloading ``cmd_args.model`` from
-Hugging Face. The path must be absolute and visible inside the container. Use ``extra_container_mounts`` to mount a
-host or shared-filesystem directory. ``model`` remains the name exposed by the server and used by benchmark clients.
+Set ``cmd_args.model`` to an absolute, container-visible path to load an existing model directory instead of
+downloading a model from Hugging Face. Use ``extra_container_mounts`` to mount a host or shared-filesystem directory.
 
 .. code-block:: toml
    :caption: test.toml (local model)
@@ -88,8 +87,7 @@ host or shared-filesystem directory. ``model`` remains the name exposed by the s
 
    [cmd_args]
    docker_image_url = "vllm/vllm-openai:v0.14.0-cu130"
-   model = "custom-model"
-   model_path = "/models/custom"
+   model = "/models/custom"
 
 The mounted directory must contain a model, configuration, and tokenizer supported by vLLM.
 

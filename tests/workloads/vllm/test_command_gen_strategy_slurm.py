@@ -248,36 +248,6 @@ class TestVllmAggregatedMode:
             str(vllm.cmd_args.port),
         ]
 
-    def test_local_model_path_is_used_for_loading_and_model_name_for_requests(
-        self, vllm: VllmTestDefinition, vllm_tr: TestRun, slurm_system: SlurmSystem
-    ) -> None:
-        vllm.cmd_args.model = "custom-model"
-        vllm.cmd_args.model_path = "/models/custom-model"
-        vllm.extra_container_mounts = ["/lustre/custom-model:/models/custom-model:ro"]
-        strategy = VllmSlurmCommandGenStrategy(slurm_system, vllm_tr)
-
-        serve_command = strategy.get_serve_commands()[0]
-        bench_command = strategy.get_bench_command()
-
-        assert serve_command[:8] == [
-            "vllm",
-            "serve",
-            "/models/custom-model",
-            "--host",
-            "0.0.0.0",
-            "--served-model-name",
-            "custom-model",
-            "--port",
-        ]
-        assert "--model custom-model" in bench_command
-        assert "/lustre/custom-model:/models/custom-model:ro" in strategy.container_mounts()
-
-        vllm.cmd_args.prefill = VllmArgs()
-        disaggregated_commands = strategy.get_serve_commands()
-        assert len(disaggregated_commands) == 2
-        assert all(command[2] == "/models/custom-model" for command in disaggregated_commands)
-        assert all("--served-model-name" in command for command in disaggregated_commands)
-
     def test_generate_wait_for_health_function(self, vllm_cmd_gen_strategy: VllmSlurmCommandGenStrategy) -> None:
         cmd_args = vllm_cmd_gen_strategy.test_run.test.cmd_args
 

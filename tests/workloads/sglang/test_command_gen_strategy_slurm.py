@@ -71,38 +71,6 @@ def test_container_mounts(sglang_cmd_gen_strategy: SglangSlurmCommandGenStrategy
     ]
 
 
-def test_local_model_path_is_used_for_loading_and_model_name_for_requests(
-    sglang: SglangTestDefinition, sglang_tr: TestRun, slurm_system: SlurmSystem
-) -> None:
-    sglang.cmd_args.model = "custom-model"
-    sglang.cmd_args.model_path = "/models/custom-model"
-    sglang.extra_container_mounts = ["/lustre/custom-model:/models/custom-model:ro"]
-    strategy = SglangSlurmCommandGenStrategy(slurm_system, sglang_tr)
-
-    serve_command = strategy.get_serve_commands()[0]
-    bench_command = strategy.get_bench_command()
-
-    assert serve_command[:9] == [
-        "python3",
-        "-m",
-        "sglang.launch_server",
-        "--model-path",
-        "/models/custom-model",
-        "--served-model-name",
-        "custom-model",
-        "--host",
-        "0.0.0.0",
-    ]
-    assert "--model custom-model" in bench_command
-    assert "/lustre/custom-model:/models/custom-model:ro" in strategy.container_mounts()
-
-    sglang.cmd_args.prefill = SglangArgs()
-    disaggregated_commands = strategy.get_serve_commands()
-    assert len(disaggregated_commands) == 2
-    assert all(command[4] == "/models/custom-model" for command in disaggregated_commands)
-    assert all("--served-model-name" in command for command in disaggregated_commands)
-
-
 class TestGpuDetection:
     def test_aggregated_gpu_ids_from_decode_config(self, sglang_tr: TestRun, slurm_system: SlurmSystem) -> None:
         tdef = cast(SglangTestDefinition, sglang_tr.test)
