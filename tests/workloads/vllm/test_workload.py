@@ -54,6 +54,28 @@ def test_installables_include_proxy_script_repo() -> None:
     assert tdef.installables == [tdef.docker_image, tdef.hf_model, proxy_script_repo]
 
 
+def test_local_model_is_not_installed_from_hugging_face() -> None:
+    proxy_script_repo = GitRepo(url="./proxy_script_repo", commit="commit")
+    tdef = VllmTestDefinition(
+        name="test",
+        description="test",
+        test_template_name="vllm",
+        cmd_args=VllmCmdArgs(
+            docker_image_url="test_url",
+            model="custom-model",
+            model_path="/models/custom-model",
+        ),
+        proxy_script_repo=proxy_script_repo,
+    )
+
+    assert tdef.installables == [tdef.docker_image, proxy_script_repo]
+
+
+def test_local_model_path_must_be_absolute() -> None:
+    with pytest.raises(ValueError, match="model_path must be an absolute path"):
+        VllmCmdArgs(docker_image_url="test_url", model_path="models/custom-model")
+
+
 def test_constraint_check_rejects_tp_pp_dp_above_available_gpus(tmp_path) -> None:
     tdef = VllmTestDefinition(
         name="test",

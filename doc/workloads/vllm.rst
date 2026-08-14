@@ -70,6 +70,30 @@ supported under ``[[Tests]]`` in a test scenario. Define them in a test definiti
 ``test_name`` when custom benchmark or semantic-evaluation arguments are needed.
 
 
+Local Models
+------------
+Set ``cmd_args.model_path`` to load an existing model directory instead of downloading ``cmd_args.model`` from
+Hugging Face. The path must be absolute and visible inside the container. Use ``extra_container_mounts`` to mount a
+host or shared-filesystem directory. ``model`` remains the name exposed by the server and used by benchmark clients.
+
+.. code-block:: toml
+   :caption: test.toml (local model)
+
+   name = "vllm_local_model"
+   description = "vLLM with a local model"
+   test_template_name = "vllm"
+   extra_container_mounts = [
+     "/lustre/models/custom:/models/custom:ro",
+   ]
+
+   [cmd_args]
+   docker_image_url = "vllm/vllm-openai:v0.14.0-cu130"
+   model = "custom-model"
+   model_path = "/models/custom"
+
+The mounted directory must contain a model, configuration, and tokenizer supported by vLLM.
+
+
 Semantic Validation
 -------------------
 To run GSM8K semantic validation after the serving benchmark, add ``semantic_eval_cmd_args``. CloudAI reports

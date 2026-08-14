@@ -14,8 +14,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from cloudai.workloads.sglang import SglangArgs
+from cloudai.workloads.sglang import SglangArgs, SglangCmdArgs, SglangTestDefinition
 
 
 def test_sglang_serve_args_exclude_internal_fields() -> None:
     assert SglangArgs(gpu_ids="0", disaggregation_transfer_backend="nccl").serve_args == []
+
+
+def test_local_model_is_not_installed_from_hugging_face() -> None:
+    tdef = SglangTestDefinition(
+        name="test",
+        description="test",
+        test_template_name="sglang",
+        cmd_args=SglangCmdArgs(
+            docker_image_url="test_url",
+            model="custom-model",
+            model_path="/models/custom-model",
+        ),
+    )
+
+    assert tdef.installables == [tdef.docker_image]

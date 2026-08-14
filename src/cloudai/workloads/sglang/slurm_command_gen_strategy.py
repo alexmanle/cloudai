@@ -43,7 +43,10 @@ class SglangSlurmCommandGenStrategy(LLMServingSlurmCommandGenStrategy[SglangCmdA
     def get_serve_commands(self) -> list[list[str]]:
         cmd_args = self.tdef.cmd_args
 
-        base_cmd = ["python3", "-m", cmd_args.serve_module, "--model-path", cmd_args.model]
+        model_source = cmd_args.model_path or cmd_args.model
+        base_cmd = ["python3", "-m", cmd_args.serve_module, "--model-path", model_source]
+        if cmd_args.model_path is not None:
+            base_cmd.extend(["--served-model-name", cmd_args.model])
         if not cmd_args.prefill:
             return [
                 [
