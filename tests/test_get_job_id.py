@@ -116,7 +116,7 @@ def test_slurm_runner_records_and_reuses_nodes_per_case(slurm_runner: SlurmRunne
 
     assert slurm_runner.pinned_nodes == {tr.name: ["node01", "node02"]}
 
-    next_tr = TestRun(tr.name, tr.test, 2, [], pin_nodes=True)
+    next_tr = TestRun(name=tr.name, test=tr.test, num_nodes=2, nodes=["bla1", "bla2"], pin_nodes=True)
     slurm_runner.on_job_submit = Mock()
     slurm_runner._submit_test = Mock(return_value=SlurmJob(next_tr, id=2))
 
