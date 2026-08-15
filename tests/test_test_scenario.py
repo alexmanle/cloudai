@@ -267,7 +267,9 @@ def test_create_test_run_with_hooks(tdef: TestDefinition, test_scenario_parser: 
         test_runs=[TestRun(name="post1", test=tdef, num_nodes=1, nodes=[], time_limit="00:20:00", iterations=1)],
     )
 
-    test_info = TestRunModel(id="main1", test_name="test1", time_limit="01:00:00", weight=10, iterations=1, num_nodes=1)
+    test_info = TestRunModel(
+        id="main1", test_name="test1", time_limit="01:00:00", weight=10, iterations=1, num_nodes=1, pin_nodes=True
+    )
     test_scenario_parser.test_mapping = {"test1": tdef}
 
     test_run = test_scenario_parser._create_test_run(
@@ -275,6 +277,7 @@ def test_create_test_run_with_hooks(tdef: TestDefinition, test_scenario_parser: 
     )
 
     assert test_run.time_limit == "01:50:00"  # Main + pre + post hooks
+    assert test_run.pin_nodes is True
 
 
 def test_total_time_limit_with_empty_hooks():
@@ -491,6 +494,14 @@ class TestInScenario:
             )
         )
         assert model.tests[0].num_nodes == [1, 2]
+
+    def test_pin_nodes_rejects_num_nodes_sweep(self) -> None:
+        with pytest.raises(ValueError, match="pin_nodes cannot be enabled when num_nodes is swept"):
+            TestRunModel(id="1", test_name="nccl", num_nodes=[1, 2], pin_nodes=True)
+
+    def test_pin_nodes_accepts_fixed_num_nodes(self) -> None:
+        model = TestRunModel(id="1", test_name="nccl", num_nodes=2, pin_nodes=True)
+        assert model.pin_nodes is True
 
     def test_agent_metrics_preserved_from_test_definition(
         self, test_scenario_parser: TestScenarioParser, slurm_system: SlurmSystem

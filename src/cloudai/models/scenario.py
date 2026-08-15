@@ -74,6 +74,7 @@ class TestRunModel(BaseModel):
     test_name: Optional[str] = None
     num_nodes: int | list[int] | None = None
     nodes: list[str] = Field(default_factory=list)
+    pin_nodes: bool = False
     exclude_nodes: list[str] = Field(
         default_factory=list,
         description=(
@@ -111,6 +112,12 @@ class TestRunModel(BaseModel):
         if isinstance(value, dict):
             return cloudai.metrics.parse_sol_spec(value)
         return value
+
+    @model_validator(mode="after")
+    def validate_pin_nodes(self) -> Self:
+        if self.pin_nodes and isinstance(self.num_nodes, list):
+            raise ValueError("pin_nodes cannot be enabled when num_nodes is swept")
+        return self
 
     def tdef_model_dump(self, by_alias: bool) -> dict:
         """Return a dictionary with non-None values that correspond to the test definition fields."""

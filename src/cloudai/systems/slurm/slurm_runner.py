@@ -42,6 +42,13 @@ class SlurmRunner(BaseRunner):
         super().__init__(mode, system, test_scenario, output_path)
         self.system = cast(SlurmSystem, system)
         self.cmd_shell = CommandShell()
+        self.pinned_nodes: dict[str, list[str]] = {}
+
+    def submit_test(self, tr: TestRun) -> None:
+        if tr.pin_nodes and tr.name in self.pinned_nodes:
+            tr.nodes = self.pinned_nodes[tr.name].copy()
+            logging.info("Forcing test case '%s' to use pinned nodes: %s", tr.name, ",".join(tr.nodes))
+        super().submit_test(tr)
 
     def get_job_id(self, stdout: str, stderr: str) -> int | None:
         match = re.search(r"Submitted batch job (\d+)", stdout)
@@ -82,8 +89,17 @@ class SlurmRunner(BaseRunner):
 
     def on_job_completion(self, job: BaseJob) -> None:
         logging.debug(f"Job completion callback for job {job.id}")
-        self.system.complete_job(cast(SlurmJob, job))
-        self.store_job_metadata(cast(SlurmJob, job))
+        slurm_job = cast(SlurmJob, job)
+        slurm_job.nodes = self.system.complete_job(slurm_job)
+        self.store_job_metadata(slurm_job)
+
+        tr = slurm_job.test_run
+        if self.mode == "run" and tr.pin_nodes and tr.name not in self.pinned_nodes:
+            if not slurm_job.nodes:
+                raise RuntimeError(f"Cannot pin test case '{tr.name}': its first job has no recorded node allocation")
+            self.pinned_nodes[tr.name] = slurm_job.nodes.copy()
+            logging.info("Pinned test case '%s' to nodes: %s", tr.name, ",".join(slurm_job.nodes))
+
         for tr in self.completed_test_runs(job):
             try:
                 self.get_cmd_gen_strategy(self.system, tr).cleanup_job_artifacts()
@@ -119,6 +135,8 @@ class SlurmRunner(BaseRunner):
             srun_cmd=cmd_gen.gen_srun_command(),
             test_cmd=" ".join(cmd_gen.generate_test_command()),
             job_root=job.test_run.output_path.absolute(),
+            nodes=job.nodes,
+            num_nodes=len(job.nodes) if job.nodes else None,
         )
 
     def store_job_metadata(self, job: SlurmJob):

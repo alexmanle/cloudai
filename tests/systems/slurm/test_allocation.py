@@ -95,9 +95,10 @@ class TestGroupAllocation:
             "cloudai.systems.slurm.slurm_system.SlurmSystem.fetch_command_output",
             return_value=(f"{','.join(nodes_list)}|", ""),
         ):
-            system.complete_job(SlurmJob(id=1, test_run=Mock()))
+            completed_nodes = system.complete_job(SlurmJob(id=1, test_run=Mock()))
 
         assert len(system.group_allocated) == 0
+        assert completed_nodes == nodes_list
 
     def test_group_allocation_is_preserved_on_updated(self, slurm_system: SlurmSystem, monkeypatch: pytest.MonkeyPatch):
         system, all_nodes, _ = self.prepare(slurm_system, [], monkeypatch)

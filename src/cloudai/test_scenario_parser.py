@@ -208,6 +208,7 @@ class TestScenarioParser:
             num_nodes=test_info.num_nodes or 1,
             iterations=test_info.iterations,
             nodes=test_info.nodes,
+            pin_nodes=test_info.pin_nodes,
             time_limit=total_time_limit,
             sol=legacy_sol,
             metric_sol=cloudai.metrics.merge_sol_configs(self.system.sol, scenario_sol, metric_sol),

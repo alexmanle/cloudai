@@ -805,9 +805,10 @@ class SlurmSystem(System):
     def system_installables(self) -> list[Installable]:
         return [File(Path(__file__).parent.absolute() / "slurm-metadata.sh")]
 
-    def complete_job(self, job: SlurmJob) -> None:
+    def complete_job(self, job: SlurmJob) -> list[str]:
         out, _ = self.fetch_command_output(f"sacct -j {job.id} -p --noheader -X --format=NodeList")
         spec = out.splitlines()[0] if out.splitlines() else out
-        nodelist = set(parse_node_list(spec.strip().replace("|", "")))
+        nodelist = sorted(set(parse_node_list(spec.strip().replace("|", ""))))
         to_unlock = [node for node in self.group_allocated if node.name in nodelist]
         self.group_allocated.difference_update(to_unlock)
+        return nodelist

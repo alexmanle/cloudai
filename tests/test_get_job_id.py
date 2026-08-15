@@ -95,12 +95,37 @@ def test_slurm_runner_on_job_completion_calls_cleanup(slurm_runner: SlurmRunner)
     cleanup = Mock()
     slurm_runner.get_cmd_gen_strategy = Mock(return_value=Mock(cleanup_job_artifacts=cleanup))
 
-    with patch.object(SlurmSystem, "complete_job") as complete_job:
+    with patch.object(SlurmSystem, "complete_job", return_value=["node01", "node02"]) as complete_job:
         slurm_runner.on_job_completion(job)
 
     complete_job.assert_called_once_with(job)
     slurm_runner.store_job_metadata.assert_called_once_with(job)
+    assert job.nodes == ["node01", "node02"]
     cleanup.assert_called_once()
+
+
+def test_slurm_runner_records_and_reuses_nodes_per_case(slurm_runner: SlurmRunner, caplog: pytest.LogCaptureFixture):
+    tr = slurm_runner.test_scenario.test_runs[0]
+    tr.pin_nodes = True
+    first_job = SlurmJob(tr, id=1)
+    slurm_runner.store_job_metadata = Mock()
+    slurm_runner.get_cmd_gen_strategy = Mock(return_value=Mock(cleanup_job_artifacts=Mock()))
+
+    with patch.object(SlurmSystem, "complete_job", return_value=["node01", "node02"]):
+        slurm_runner.on_job_completion(first_job)
+
+    assert slurm_runner.pinned_nodes == {tr.name: ["node01", "node02"]}
+
+    next_tr = TestRun(tr.name, tr.test, 2, [], pin_nodes=True)
+    slurm_runner.on_job_submit = Mock()
+    slurm_runner._submit_test = Mock(return_value=SlurmJob(next_tr, id=2))
+
+    with caplog.at_level("INFO"):
+        slurm_runner.submit_test(next_tr)
+
+    assert next_tr.nodes == ["node01", "node02"]
+    assert "Forcing test case 'tr-name' to use pinned nodes: node01,node02" in caplog.text
+    slurm_runner.on_job_submit.assert_called_once_with(next_tr)
 
 
 @pytest.mark.parametrize(
