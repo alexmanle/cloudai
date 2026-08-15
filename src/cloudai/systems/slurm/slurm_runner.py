@@ -96,9 +96,10 @@ class SlurmRunner(BaseRunner):
         tr = slurm_job.test_run
         if self.mode == "run" and tr.pin_nodes and tr.name not in self.pinned_nodes:
             if not slurm_job.nodes:
-                raise RuntimeError(f"Cannot pin test case '{tr.name}': its first job has no recorded node allocation")
-            self.pinned_nodes[tr.name] = slurm_job.nodes.copy()
-            logging.info("Pinned test case '%s' to nodes: %s", tr.name, ",".join(slurm_job.nodes))
+                logging.error("Cannot pin test case '%s': the job has no recorded node allocation", tr.name)
+            else:
+                self.pinned_nodes[tr.name] = slurm_job.nodes.copy()
+                logging.info("Pinned test case '%s' to nodes: %s", tr.name, ",".join(slurm_job.nodes))
 
         for tr in self.completed_test_runs(job):
             try:

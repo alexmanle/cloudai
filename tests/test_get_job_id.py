@@ -128,6 +128,25 @@ def test_slurm_runner_records_and_reuses_nodes_per_case(slurm_runner: SlurmRunne
     slurm_runner.on_job_submit.assert_called_once_with(next_tr)
 
 
+def test_slurm_runner_continues_when_pinned_case_has_no_recorded_nodes(
+    slurm_runner: SlurmRunner, caplog: pytest.LogCaptureFixture
+) -> None:
+    tr = slurm_runner.test_scenario.test_runs[0]
+    tr.pin_nodes = True
+    job = SlurmJob(tr, id=1)
+    slurm_runner.store_job_metadata = Mock()
+    cleanup = Mock()
+    slurm_runner.get_cmd_gen_strategy = Mock(return_value=Mock(cleanup_job_artifacts=cleanup))
+
+    with patch.object(SlurmSystem, "complete_job", return_value=[]), caplog.at_level("ERROR"):
+        slurm_runner.on_job_completion(job)
+
+    assert tr.name not in slurm_runner.pinned_nodes
+    assert "Cannot pin test case 'tr-name': the job has no recorded node allocation" in caplog.text
+    slurm_runner.store_job_metadata.assert_called_once_with(job)
+    cleanup.assert_called_once()
+
+
 @pytest.mark.parametrize(
     "stdout, stderr, expected_job_id",
     [
