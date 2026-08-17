@@ -215,7 +215,7 @@ class TrainingParser(ABC):
         if not metadata.nodes:
             return tr.nnodes, list(tr.nodes)
 
-        return metadata.num_nodes or len(metadata.nodes), list(metadata.nodes)
+        return len(metadata.nodes), list(metadata.nodes)
 
     @staticmethod
     def _get_clique_size(env_vars: dict[str, Any]) -> Optional[int]:
