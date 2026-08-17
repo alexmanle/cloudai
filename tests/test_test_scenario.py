@@ -937,14 +937,20 @@ class TestPathReference:
             TestRunModel(id="1", path="nccl.toml", test_template_name="NcclTest")
         assert exc_info.match("'test_template_name' must not be set if 'test_name' or 'path' is set.")
 
+    def test_path_and_empty_test_template_name_together_is_rejected(self):
+        """An empty string is a truthy-looking but still explicitly-set value - it must not be
+        treated the same as unset, or 'test_template_name' could silently smuggle a value
+        through when combined with 'path'."""
+        with pytest.raises(ValueError, match="'test_template_name' must not be set if 'test_name' or 'path' is set"):
+            TestRunModel(id="1", path="nccl.toml", test_template_name="")
+
     def test_path_alone_satisfies_the_base_requirement(self):
         model = TestRunModel(id="1", path="nccl.toml")
         assert model.path == "nccl.toml"
 
     def test_empty_path_is_rejected(self):
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match="String should have at least 1 character"):
             TestRunModel(id="1", path="")
-        assert exc_info.match("String should have at least 1 character")
 
     def test_path_is_resolved_relative_to_the_scenario_file(self, tmp_path: Path, slurm_system: SlurmSystem):
         (tmp_path / "tests").mkdir()
@@ -1025,8 +1031,7 @@ class TestPathReference:
             """
         )
         parser = TestScenarioParser(scenario_path, slurm_system, {}, {})
-        model = TestScenarioModel.model_validate(toml.loads(scenario_path.read_text()))
 
-        tdef = parser._prepare_tdef(model.tests[0])
+        scenario = parser.parse()
 
-        assert tdef.name == "nccl"
+        assert scenario.test_runs[0].test.name == "nccl"

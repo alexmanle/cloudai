@@ -155,7 +155,7 @@ class TestRunModel(BaseModel):
                     f"Possible values are: {', '.join(registry.test_definitions_map.keys())}"
                 )
         else:
-            if self.test_template_name:
+            if self.test_template_name is not None:
                 raise ValueError("'test_template_name' must not be set if 'test_name' or 'path' is set.")
 
         return self
