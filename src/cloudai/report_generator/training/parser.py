@@ -24,13 +24,14 @@ import ast
 import fnmatch
 import json
 import logging
+import socket
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, ClassVar, Optional
 
 import yaml
 
-from cloudai.core import System, TestRun
+from cloudai.core import System, TestRun, TestScenario
 
 from .mappings import (
     MEGATRON_BRIDGE_MODEL_CONFIG,
@@ -80,18 +81,24 @@ class TrainingParser(ABC):
     def can_parse(self, tr: TestRun) -> bool:
         """Return True when the run produced the TB events and config artifact this parser needs."""
         name = type(self).__name__
+
+        # Verify there's an existing TensorBoard directory containing at least one event file.
         tb_dir = self.get_tb_dir(tr)
         if not (tb_dir.is_dir() and self._has_tb_event_files(tb_dir)):
             logging.warning(f"{name}: no TensorBoard events at '{tb_dir}'; skipping training report")
             return False
+
+        # If the workload expects a configuration file, verify that it exists.
         config_path = self.get_config_path(tr)
         if config_path is None or not config_path.is_file():
             logging.warning(f"{name}: config artifact not found under '{tr.output_path}'; skipping training report")
             return False
+
+        # If the configuration file is structured, verify that it parses into a non-empty mapping.
         if config_path.suffix.lower() in {".json", ".yaml", ".yml"}:
             try:
                 config = self.get_model_config(tr)
-            except (json.JSONDecodeError, yaml.YAMLError) as exc:
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError, yaml.YAMLError) as exc:
                 logging.warning(f"{name}: invalid config artifact at '{config_path}' ({exc}); skipping training report")
                 return False
             if not isinstance(config, dict) or not config:
@@ -101,10 +108,10 @@ class TrainingParser(ABC):
                 return False
         return True
 
-    def parse(self, tr: TestRun, system: System) -> TrainingResults:
+    def parse(self, tr: TestRun, system: System, test_scenario: TestScenario) -> TrainingResults:
         """Read TB scalars + the config artifact and assemble TrainingResults."""
         steps: list[TrainingStep] = self._build_steps(self._read_scalars(tr))
-        config: TrainingConfig = self._build_config(tr, system)
+        config: TrainingConfig = self._build_config(tr, system, test_scenario)
         aggregation = self._aggregate(steps, config)
         return TrainingResults(config=config, steps=steps, aggregation=aggregation)
 
@@ -149,16 +156,30 @@ class TrainingParser(ABC):
         }
         return TrainingStep(iteration=step, **field_values)
 
-    def _build_config(self, tr: TestRun, system: System) -> TrainingConfig:
+    def _build_config(self, tr: TestRun, system: System, test_scenario: TestScenario) -> TrainingConfig:
         """Map the framework + test config into TrainingConfig, then fill the CloudAI-computed fields."""
-        field_values: dict[str, Any] = {}
-        field_values.update(self._resolve_model_config(tr))
-        field_values.update(self._resolve_test_config(tr))
-        config = TrainingConfig(**field_values)
-        config.test_template_name = tr.test.test_template_name
-        config.num_nodes = tr.nnodes
-        config.model_name = self.get_model_name(tr)
+        env_vars = {**getattr(system, "global_env_vars", {}), **tr.test.extra_env_vars}
+        config_paths = test_scenario.config_paths
+        config = TrainingConfig(
+            test_id=tr.name,
+            test_name=tr.test.name,
+            description=tr.test.description,
+            test_scenario_name=test_scenario.name,
+            test_template_name=tr.test.test_template_name,
+            system_path=str(config_paths.system_path) if config_paths is not None else "",
+            tests_dir_path=str(config_paths.tests_dir_path) if config_paths and config_paths.tests_dir_path else "",
+            test_scenario_path=str(config_paths.test_scenario_path) if config_paths is not None else "",
+            cloudai_execution_node=socket.gethostname(),
+            env_vars=env_vars,
+            num_nodes=tr.nnodes,
+            nodes=list(tr.nodes),
+            **self._resolve_model_config(tr),
+            **self._resolve_test_config(tr),
+        )
+
+        # Hardware
         gpus_per_node = getattr(system, "gpus_per_node", None) or getattr(system, "ntasks_per_node", None)
+        config.gpus_per_node = gpus_per_node
         if gpus_per_node:
             world_size = config.num_nodes * gpus_per_node
             config.world_size = world_size
@@ -168,7 +189,20 @@ class TrainingParser(ABC):
                 f"{type(self).__name__}: system has no gpus_per_node/ntasks_per_node; "
                 "world_size and data_parallel_size left unset"
             )
+
+        config.clique_size = self._get_clique_size(config.env_vars)
+
+        # Model architecture
+        config.model_name = self.get_model_name(tr)
         return config
+
+    @staticmethod
+    def _get_clique_size(env_vars: dict[str, Any]) -> Optional[int]:
+        clique_size = env_vars.get("CLIQUE_SIZE")
+        try:
+            return int(clique_size) if clique_size is not None else None
+        except (TypeError, ValueError):
+            return None
 
     def _read_scalars(self, tr: TestRun) -> list[Scalar]:
         """Read the run's scalar events (subclasses may drop workload-specific noise)."""

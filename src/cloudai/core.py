@@ -48,7 +48,15 @@ from ._core.registry import Registry
 from ._core.report_generation_strategy import ReportGenerationStrategy
 from ._core.runner import Runner
 from ._core.system import System
-from ._core.test_scenario import METRIC_ERROR, MetricErrorSentinel, MetricValue, TestDependency, TestRun, TestScenario
+from ._core.test_scenario import (
+    METRIC_ERROR,
+    ConfigPaths,
+    MetricErrorSentinel,
+    MetricValue,
+    TestDependency,
+    TestRun,
+    TestScenario,
+)
 from .configurator.base_agent import BaseAgent, BaseAgentConfig, RewardOverrides
 from .configurator.cloudai_gym import CloudAIGymEnv
 from .configurator.env_params import (
@@ -77,6 +85,7 @@ __all__ = [
     "CloudAIGymEnv",
     "CmdArgs",
     "CommandGenStrategy",
+    "ConfigPaths",
     "DockerImage",
     "Encoding",
     "File",

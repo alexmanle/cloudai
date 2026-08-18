@@ -55,15 +55,22 @@ MEGATRON_BRIDGE_SCALE: dict[str, float] = {
 # Framework's resolved config artifact. (world_size, num_nodes, model_name) and computed data_parallel_size are not
 # mapped here.
 NEMO_MODEL_CONFIG: dict[str, str] = {
+    # Precision
+    "fp8": "model.fp8",
+    "fp8_recipe": "model.fp8_recipe",
+    # Batch
     "micro_batch_size": "data.micro_batch_size",
     "global_batch_size": "data.global_batch_size",
     "seq_length": "data.seq_length",
+    # Parallelism
     "tensor_parallel_size": "parallelism.tensor_model_parallel_size",
     "pipeline_parallel_size": "parallelism.pipeline_model_parallel_size",
     "context_parallel_size": "parallelism.context_parallel_size",
     "virtual_pipeline_parallel_size": "parallelism.virtual_pipeline_model_parallel_size",
     "sequence_parallel": "parallelism.sequence_parallel",
     "expert_parallel_size": "parallelism.expert_model_parallel_size",
+    "expert_tensor_parallel_size": "parallelism.expert_tensor_parallel_size",
+    # Model architecture
     "num_layers": "model.num_layers",
     "hidden_size": "model.hidden_size",
     "num_attention_heads": "model.num_attention_heads",
@@ -72,6 +79,7 @@ NEMO_MODEL_CONFIG: dict[str, str] = {
     "kv_channels": "model.kv_channels",
     "normalization": "model.normalization",
     "position_embedding_type": "model.position_embedding_type",
+    # MoE
     "num_experts": "model.num_moe_experts",
     "moe_router_topk": "model.moe_router_topk",
     "moe_ffn_hidden_size": "model.moe_ffn_hidden_size",
@@ -79,15 +87,22 @@ NEMO_MODEL_CONFIG: dict[str, str] = {
 }
 
 MEGATRON_MODEL_CONFIG: dict[str, str] = {
+    # Precision
+    "fp8": "fp8",
+    "fp8_recipe": "fp8_recipe",
+    # Batch
     "micro_batch_size": "micro_batch_size",
     "global_batch_size": "global_batch_size",
     "seq_length": "seq_length",
+    # Parallelism
     "tensor_parallel_size": "tensor_model_parallel_size",
     "pipeline_parallel_size": "pipeline_model_parallel_size",
     "context_parallel_size": "context_parallel_size",
     "virtual_pipeline_parallel_size": "virtual_pipeline_model_parallel_size",
     "sequence_parallel": "sequence_parallel",
     "expert_parallel_size": "expert_model_parallel_size",
+    "expert_tensor_parallel_size": "expert_tensor_parallel_size",
+    # Model architecture
     "num_layers": "num_layers",
     "hidden_size": "hidden_size",
     "num_attention_heads": "num_attention_heads",
@@ -96,6 +111,7 @@ MEGATRON_MODEL_CONFIG: dict[str, str] = {
     "kv_channels": "kv_channels",
     "normalization": "normalization",
     "position_embedding_type": "position_embedding_type",
+    # MoE
     "num_experts": "num_experts",
     "moe_router_topk": "moe_router_topk",
     "moe_ffn_hidden_size": "moe_ffn_hidden_size",
@@ -103,15 +119,22 @@ MEGATRON_MODEL_CONFIG: dict[str, str] = {
 }
 
 MEGATRON_BRIDGE_MODEL_CONFIG: dict[str, str] = {
+    # Precision
+    "fp8": "mixed_precision.fp8",
+    "fp8_recipe": "mixed_precision.fp8_recipe",
+    # Batch
     "micro_batch_size": "train.micro_batch_size",
     "global_batch_size": "train.global_batch_size",
     "seq_length": "model.seq_length",
+    # Parallelism
     "tensor_parallel_size": "model.tensor_model_parallel_size",
     "pipeline_parallel_size": "model.pipeline_model_parallel_size",
     "context_parallel_size": "model.context_parallel_size",
     "virtual_pipeline_parallel_size": "model.virtual_pipeline_model_parallel_size",
     "sequence_parallel": "model.sequence_parallel",
     "expert_parallel_size": "model.expert_model_parallel_size",
+    "expert_tensor_parallel_size": "model.expert_tensor_parallel_size",
+    # Model architecture
     "num_layers": "model.num_layers",
     "hidden_size": "model.hidden_size",
     "num_attention_heads": "model.num_attention_heads",
@@ -120,6 +143,7 @@ MEGATRON_BRIDGE_MODEL_CONFIG: dict[str, str] = {
     "kv_channels": "model.kv_channels",
     "normalization": "model.normalization",
     "position_embedding_type": "model.position_embedding_type",
+    # MoE
     "num_experts": "model.num_moe_experts",
     "moe_router_topk": "model.moe_router_topk",
     "moe_ffn_hidden_size": "model.moe_ffn_hidden_size",
@@ -129,25 +153,37 @@ MEGATRON_BRIDGE_MODEL_CONFIG: dict[str, str] = {
 
 # CloudAI TestDefinition (user TOML + defaults). TrainingConfig field -> dotted path in TestDefinition.model_dump().
 NEMO_TEST_CONFIG: dict[str, str] = {
+    # Environment
+    "container_image": "cmd_args.docker_image_url",
+    # Profiling
     "profiling_enabled": "nsys.enable",
     "profiling_start_step": "extra_cmd_args.*start_step",
     "profiling_stop_step": "extra_cmd_args.*end_step",
+    # Aggregation window
     "exclude_start_steps": "training_report.exclude_start_steps",
     "exclude_post_profiling_steps": "training_report.exclude_post_profiling_steps",
 }
 
 MEGATRON_TEST_CONFIG: dict[str, str] = {
+    # Environment
+    "container_image": "cmd_args.docker_image_url",
+    # Profiling
     "profiling_enabled": "nsys.enable",
     "profiling_start_step": "cmd_args.profile_step_start",
     "profiling_stop_step": "cmd_args.profile_step_end",
+    # Aggregation window
     "exclude_start_steps": "training_report.exclude_start_steps",
     "exclude_post_profiling_steps": "training_report.exclude_post_profiling_steps",
 }
 
 MEGATRON_BRIDGE_TEST_CONFIG: dict[str, str] = {
+    # Environment
+    "container_image": "cmd_args.container_image",
+    # Profiling
     "profiling_enabled": "cmd_args.enable_nsys",
     "profiling_start_step": "cmd_args.profiling_start_step",
     "profiling_stop_step": "cmd_args.profiling_stop_step",
+    # Aggregation window
     "exclude_start_steps": "training_report.exclude_start_steps",
     "exclude_post_profiling_steps": "training_report.exclude_post_profiling_steps",
 }

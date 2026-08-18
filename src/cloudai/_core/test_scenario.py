@@ -240,6 +240,15 @@ class TestRun:
         return new_tr
 
 
+@dataclass(frozen=True)
+class ConfigPaths:
+    """Source paths used to build a system and test scenario."""
+
+    system_path: Path
+    tests_dir_path: Optional[Path]
+    test_scenario_path: Path
+
+
 @dataclass
 class TestScenario:
     """
@@ -250,6 +259,7 @@ class TestScenario:
         tests (List[Test]): Tests in the scenario.
         job_status_check (bool): Flag indicating whether to check the job status or not.
         reports (dict[str, ReportConfig] | None): Report configurations for the scenario.
+        config_paths (Optional[ConfigPaths]): Source configuration paths, when parsed from files.
     """
 
     __test__ = False
@@ -258,6 +268,7 @@ class TestScenario:
     test_runs: list[TestRun]
     job_status_check: bool = True
     reports: dict[str, ReportConfig] = field(default_factory=dict)
+    config_paths: Optional[ConfigPaths] = None
 
     def __repr__(self) -> str:
         """

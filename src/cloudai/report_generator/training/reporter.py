@@ -19,13 +19,13 @@ import logging
 from dataclasses import asdict
 from typing import ClassVar
 
-from cloudai.core import ReportGenerationStrategy
+from cloudai.core import Reporter
 
 from .parser import MegatronBridgeParser, MegatronParser, NeMoRunParser, TrainingParser
 
 
-class TrainingReportGenerationStrategy(ReportGenerationStrategy):
-    """Writes training_report.json for training workloads (NeMoRun, MegatronRun, MegatronBridge)."""
+class TrainingReporter(Reporter):
+    """Generates a training report for each supported test run in a scenario."""
 
     REPORT_FILE_NAME = "training_report.json"
 
@@ -35,18 +35,25 @@ class TrainingReportGenerationStrategy(ReportGenerationStrategy):
         "MegatronBridge": MegatronBridgeParser,
     }
 
-    def can_handle_directory(self) -> bool:
-        parser_cls = self.PARSERS.get(self.test_run.test.test_template_name)
-        return parser_cls is not None and parser_cls().can_parse(self.test_run)
+    def generate(self) -> None:
+        self.load_test_runs()
 
-    def generate_report(self) -> None:
-        parser_cls = self.PARSERS[self.test_run.test.test_template_name]
-        training_results = parser_cls().parse(self.test_run, self.system)
+        for tr in self.trs:
+            parser_cls = self.PARSERS.get(tr.test.test_template_name)
+            if parser_cls is None:
+                continue
+            parser = parser_cls()
+            if not parser.can_parse(tr):
+                continue
+            try:
+                training_results = parser.parse(tr, self.system, self.test_scenario)
 
-        report_path = self.test_run.output_path / self.REPORT_FILE_NAME
-        report_path.write_text(json.dumps(asdict(training_results), indent=2, default=self._json_default))
+                report_path = tr.output_path / self.REPORT_FILE_NAME
+                report_path.write_text(json.dumps(asdict(training_results), indent=2, default=self._json_default))
 
-        logging.info(f"Generated training report for '{self.test_run.name}' at {report_path}")
+                logging.info(f"Generated training report for '{tr.name}' at {report_path}")
+            except Exception as exc:
+                logging.warning(f"Error generating training report for '{tr.output_path}': {exc}")
 
     @staticmethod
     def _json_default(value: object) -> object:

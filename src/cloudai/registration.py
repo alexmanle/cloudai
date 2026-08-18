@@ -38,7 +38,7 @@ def register_all():
     )
     from cloudai.core import Registry
     from cloudai.models.scenario import ReportConfig
-    from cloudai.report_generator.training import TrainingReportGenerationStrategy
+    from cloudai.report_generator.training import TrainingReporter
     from cloudai.reporter import DSEReporter, PerTestReporter, StatusReporter, TarballReporter
 
     # Import systems
@@ -305,14 +305,11 @@ def register_all():
     Registry().add_report(GrokTestDefinition, JaxToolboxReportGenerationStrategy)
     Registry().add_report(MegatronRunTestDefinition, CheckpointTimingReportGenerationStrategy)
     Registry().add_report(MegatronRunTestDefinition, MegatronRunReportGenerationStrategy)
-    Registry().add_report(MegatronRunTestDefinition, TrainingReportGenerationStrategy)
     Registry().add_report(MegatronBridgeTestDefinition, MegatronBridgeReportGenerationStrategy)
-    Registry().add_report(MegatronBridgeTestDefinition, TrainingReportGenerationStrategy)
     Registry().add_report(NCCLTestDefinition, NcclTestPerformanceReportGenerationStrategy)
     Registry().add_report(NeMoLauncherTestDefinition, NeMoLauncherReportGenerationStrategy)
     Registry().add_report(NeMoRunTestDefinition, NeMoRunReportGenerationStrategy)
     Registry().add_report(NeMoRunTestDefinition, NeMoRunDataStoreReportGenerationStrategy)
-    Registry().add_report(NeMoRunTestDefinition, TrainingReportGenerationStrategy)
     Registry().add_report(NemotronTestDefinition, JaxToolboxReportGenerationStrategy)
     Registry().add_report(UCCTestDefinition, UCCTestReportGenerationStrategy)
     Registry().add_report(TritonInferenceTestDefinition, TritonInferenceReportGenerationStrategy)
@@ -328,6 +325,7 @@ def register_all():
     Registry().add_report(VllmTestDefinition, VLLMBenchReportGenerationStrategy)
 
     Registry().add_scenario_report("per_test", PerTestReporter, ReportConfig(enable=True))
+    Registry().add_scenario_report("training", TrainingReporter, ReportConfig(enable=True))
     Registry().add_scenario_report(
         "moe_benchmark_throughput",
         MoEBenchmarkThroughputReporter,
