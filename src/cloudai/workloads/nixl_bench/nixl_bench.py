@@ -69,14 +69,12 @@ class NIXLBenchTestDefinition(NIXLBaseTestDefinition[NIXLBenchCmdArgs]):
             exclude_none=True,
         )
         if self.cmd_args.runtime_type == "ETCD":
-            # ETCD is NIXLBench's default runtime, so keep existing commands concise.
             cmd_args.pop("runtime_type")
             cmd_args.pop("asio_address")
             cmd_args.pop("asio_port")
             if not self.cmd_args.etcd_endpoints:
                 cmd_args.pop("etcd_endpoints")
         else:
-            # ASIO performs direct peer-to-peer coordination and does not use ETCD endpoints.
             cmd_args.pop("etcd_endpoints")
         return cmd_args
 
