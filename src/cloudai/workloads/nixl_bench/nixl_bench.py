@@ -16,12 +16,15 @@
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any, Literal, cast
+
+import pydantic
 
 import cloudai.metrics
 from cloudai.core import JobStatusResult, System, TestRun
 from cloudai.util.lazy_imports import lazy
 from cloudai.workloads.common.nixl import (
+    MANAGED_ETCD_ENDPOINTS,
     NIXLBaseCmdArgs,
     NIXLBaseTestDefinition,
     NIXLExtendedCmdArgs,
@@ -33,15 +36,28 @@ class NIXLBenchCmdArgs(NIXLBaseCmdArgs, NIXLExtendedCmdArgs):
     """Command line arguments for a NIXL Bench test."""
 
     path_to_benchmark: str
-    etcd_endpoints: str = "http://$NIXL_ETCD_ENDPOINTS"
+    etcd_endpoints: str = MANAGED_ETCD_ENDPOINTS
+    runtime_type: Literal["ETCD", "ASIO"] = "ETCD"
+    asio_address: str = "$NIXL_ASIO_ADDRESS"
+    asio_port: int = pydantic.Field(default=12345, ge=1, le=65535)
 
 
 class NIXLBenchTestDefinition(NIXLBaseTestDefinition[NIXLBenchCmdArgs]):
     """Test definition for a NIXL Bench test."""
 
     @property
+    def uses_etcd(self) -> bool:
+        """Return whether CloudAI should launch ETCD for this benchmark."""
+        return self.cmd_args.runtime_type == "ETCD" and self.cmd_args.etcd_endpoints == MANAGED_ETCD_ENDPOINTS
+
+    @property
+    def uses_asio(self) -> bool:
+        """Return whether this benchmark uses NIXLBench's ASIO runtime."""
+        return self.cmd_args.runtime_type == "ASIO"
+
+    @property
     def cmd_args_dict(self) -> dict[str, str | list[str]]:
-        return self.cmd_args.model_dump(
+        cmd_args = self.cmd_args.model_dump(
             exclude={
                 "docker_image_url",
                 "path_to_benchmark",
@@ -52,6 +68,15 @@ class NIXLBenchTestDefinition(NIXLBaseTestDefinition[NIXLBenchCmdArgs]):
             },
             exclude_none=True,
         )
+        if self.cmd_args.runtime_type == "ETCD":
+            cmd_args.pop("runtime_type")
+            cmd_args.pop("asio_address")
+            cmd_args.pop("asio_port")
+            if not self.cmd_args.etcd_endpoints:
+                cmd_args.pop("etcd_endpoints")
+        else:
+            cmd_args.pop("etcd_endpoints")
+        return cmd_args
 
     def was_run_successful(self, tr: TestRun) -> JobStatusResult:
         df = extract_nixlbench_data(tr.output_path / "stdout.txt")

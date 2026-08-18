@@ -50,7 +50,10 @@ class TestNIXLBenchCommand:
         strategy = NIXLBenchSlurmCommandGenStrategy(slurm_system, nixl_bench_tr)
         cmd = strategy.gen_nixlbench_command()
         tdef: NIXLBenchTestDefinition = cast(NIXLBenchTestDefinition, nixl_bench_tr.test)
-        assert cmd == ["./nixlbench", f"--etcd-endpoints={tdef.cmd_args.etcd_endpoints}"]
+        assert cmd == ["./nixlbench", "--etcd-endpoints=http://$NIXL_ETCD_ENDPOINTS"]
+        assert tdef.uses_etcd
+        assert not tdef.uses_asio
+        assert "NIXL_ASIO_ADDRESS" not in strategy.final_env_vars
 
     def test_can_set_any_cmd_arg(self, nixl_bench_tr: TestRun, slurm_system: SlurmSystem):
         in_args = {"backend": "MPI", "dashed-opt": "DRAM", "under_score_opt": "VRAM"}
@@ -69,6 +72,21 @@ class TestNIXLBenchCommand:
         for k, v in in_args.items():
             assert f"--{k}={v}" in cmd
 
+    def test_asio_runtime_args(self, nixl_bench_tr: TestRun, slurm_system: SlurmSystem):
+        tdef = cast(NIXLBenchTestDefinition, nixl_bench_tr.test)
+        tdef.cmd_args.runtime_type = "ASIO"
+        strategy = NIXLBenchSlurmCommandGenStrategy(slurm_system, nixl_bench_tr)
+
+        assert strategy.gen_nixlbench_command() == [
+            "./nixlbench",
+            "--runtime_type=ASIO",
+            "--asio_address=$NIXL_ASIO_ADDRESS",
+            "--asio_port=12345",
+        ]
+        assert not tdef.uses_etcd
+        assert tdef.uses_asio
+        assert "NIXL_ASIO_ADDRESS" in strategy.final_env_vars
+
     def test_container_mounts(self, nixl_bench_tr: TestRun, slurm_system: SlurmSystem):
         nixl_bench_tr.test.cmd_args = NIXLBenchCmdArgs.model_validate(
             {
@@ -86,7 +104,7 @@ class TestNIXLBenchCommand:
             "--filepath=/data",
             "--total_buffer_size=1024",
             "--device_list=11:K:/dev/nvme0n1,12:F:/p1/store0.bin,13:F:/p2/store0.bin",
-            f"--etcd-endpoints={nixl_bench_tr.test.cmd_args.etcd_endpoints}",
+            "--etcd-endpoints=http://$NIXL_ETCD_ENDPOINTS",
             "--backend=GUSLI",
         ]
 
@@ -179,31 +197,6 @@ class TestNIXLBenchCommand:
             assert cmd_args.total_buffer_size == expected_total_buffer_size
 
 
-def test_gen_etcd_srun_command(nixl_bench_tr: TestRun, slurm_system: SlurmSystem):
-    strategy = NIXLBenchSlurmCommandGenStrategy(slurm_system, nixl_bench_tr)
-    tdef: NIXLBenchTestDefinition = cast(NIXLBenchTestDefinition, nixl_bench_tr.test)
-    cmd = " ".join(strategy.gen_etcd_srun_command(tdef.cmd_args.etcd_path))
-    assert (
-        f"{tdef.cmd_args.etcd_path} --listen-client-urls=http://0.0.0.0:2379 --advertise-client-urls=http://$SLURM_JOB_MASTER_NODE:2379"
-        " --listen-peer-urls=http://0.0.0.0:2380 --initial-advertise-peer-urls=http://$SLURM_JOB_MASTER_NODE:2380"
-        ' --initial-cluster="default=http://$SLURM_JOB_MASTER_NODE:2380"'
-    ) in cmd
-
-    tdef: NIXLBenchTestDefinition = cast(NIXLBenchTestDefinition, nixl_bench_tr.test)
-    assert "--overlap" in cmd
-    assert "--ntasks-per-node=1" in cmd
-    assert "--ntasks=1" in cmd
-    assert "--nodelist=$SLURM_JOB_MASTER_NODE" in cmd
-    assert "-N1" in cmd
-    assert "--container-image=" not in cmd
-    assert "--container-mounts" not in cmd
-
-    strategy._current_image_url = str(tdef.docker_image.installed_path)
-    cmd = " ".join(strategy.gen_etcd_srun_command(tdef.cmd_args.etcd_path))
-    assert f"--container-image={tdef.docker_image.installed_path}" in cmd
-    assert "--container-mounts" in cmd
-
-
 def test_get_etcd_srun_command_with_etcd_image(nixl_bench_tr: TestRun, slurm_system: SlurmSystem):
     strategy = NIXLBenchSlurmCommandGenStrategy(slurm_system, nixl_bench_tr)
     tdef: NIXLBenchTestDefinition = cast(NIXLBenchTestDefinition, nixl_bench_tr.test)
@@ -248,32 +241,85 @@ def test_gen_nixl_srun_command(
                 assert "--nodelist=$SLURM_JOB_MASTER_NODE" in cmd
 
 
-def test_gen_srun_command(nixl_bench_tr: TestRun, slurm_system: SlurmSystem):
+@pytest.mark.parametrize("num_nodes", [1, 2])
+def test_asio_srun_lifecycle(nixl_bench_tr: TestRun, slurm_system: SlurmSystem, num_nodes: int) -> None:
+    nixl_bench_tr.num_nodes = num_nodes
+    tdef = cast(NIXLBenchTestDefinition, nixl_bench_tr.test)
+    tdef.cmd_args.runtime_type = "ASIO"
+    nixl_bench_tr.test.cmd_args.backend = "UCX"
     strategy = NIXLBenchSlurmCommandGenStrategy(slurm_system, nixl_bench_tr)
-    cmd = strategy.gen_wait_for_etcd_command()
-    assert cmd == [
-        "timeout",
-        "60",
-        "bash",
-        "-c",
-        '"until curl -s $NIXL_ETCD_ENDPOINTS/health > /dev/null 2>&1; do sleep 1; done" || {\n',
-        '  echo "ETCD ($NIXL_ETCD_ENDPOINTS) was unreachable after 60 seconds";\n',
-        "  exit 1\n",
-        "}",
-    ]
+
+    command = strategy.gen_srun_command()
+
+    assert "NIXL_ASIO_ADDRESS" in strategy.final_env_vars
+    assert command.count("nixlbench --runtime_type=ASIO") == 2
+    assert "--asio_address=$NIXL_ASIO_ADDRESS" in command
+    assert "etcd_pid" not in command
+    assert "until curl" not in command
+    assert "sleep 4" in command
+    assert "sleep 15" not in command
+    if num_nodes == 1:
+        assert command.count("--nodelist=$SLURM_JOB_MASTER_NODE") == 2
+    else:
+        assert "sed -n '1p'" in command
+        assert "sed -n '2p'" in command
 
 
-def test_gen_kill_and_wait_cmd(nixl_bench_tr: TestRun, slurm_system: SlurmSystem) -> None:
+def test_storage_backend_without_runtime(nixl_bench_tr: TestRun, slurm_system: SlurmSystem) -> None:
+    tdef = cast(NIXLBenchTestDefinition, nixl_bench_tr.test)
+    nixl_bench_tr.test.cmd_args.backend = "POSIX"
+    tdef.cmd_args.etcd_endpoints = ""
     strategy = NIXLBenchSlurmCommandGenStrategy(slurm_system, nixl_bench_tr)
-    cmd = strategy.gen_kill_and_wait_cmd("PID", timeout=120)
-    assert cmd == [
-        "kill -TERM $PID\n",
-        "timeout",
-        "120",
-        "bash",
-        "-c",
-        '"while kill -0 $PID 2>/dev/null; do sleep 1; done" || {\n',
-        '  echo "Failed to kill ETCD (pid=$PID) within 120 seconds";\n',
-        "  exit 1\n",
-        "}",
-    ]
+
+    command = strategy.gen_srun_command()
+
+    assert command.count("nixlbench") == 1
+    assert "--etcd-endpoints" not in command
+    assert "etcd_pid" not in command
+    assert "until curl" not in command
+
+
+def test_managed_etcd_lifecycle(nixl_bench_tr: TestRun, slurm_system: SlurmSystem) -> None:
+    tdef = cast(NIXLBenchTestDefinition, nixl_bench_tr.test)
+    nixl_bench_tr.test.cmd_args.backend = "UCX"
+    strategy = NIXLBenchSlurmCommandGenStrategy(slurm_system, nixl_bench_tr)
+
+    command = strategy.gen_srun_command()
+
+    assert tdef.uses_etcd
+    assert "--etcd-endpoints=http://$NIXL_ETCD_ENDPOINTS" in command
+    assert "etcd_pid=$!" in command
+    assert "until curl" in command
+    assert "kill -TERM $etcd_pid" in command
+
+
+def test_external_etcd_is_passed_through(nixl_bench_tr: TestRun, slurm_system: SlurmSystem) -> None:
+    tdef = cast(NIXLBenchTestDefinition, nixl_bench_tr.test)
+    nixl_bench_tr.test.cmd_args.backend = "UCX"
+    tdef.cmd_args.etcd_endpoints = "http://etcd.example:2379"
+    strategy = NIXLBenchSlurmCommandGenStrategy(slurm_system, nixl_bench_tr)
+
+    command = strategy.gen_srun_command()
+
+    assert not tdef.uses_etcd
+    assert "--etcd-endpoints=http://etcd.example:2379" in command
+    assert "etcd_pid" not in command
+    assert "until curl" not in command
+
+
+def test_asio_does_not_install_custom_etcd_image(nixl_bench_tr: TestRun) -> None:
+    tdef = cast(NIXLBenchTestDefinition, nixl_bench_tr.test)
+    tdef.cmd_args.runtime_type = "ASIO"
+    tdef.cmd_args.etcd_image_url = "docker.io/library/etcd:latest"
+
+    assert tdef.etcd_image not in tdef.installables
+
+
+def test_asio_rejects_non_pairwise_process_shape(nixl_bench_tr: TestRun, slurm_system: SlurmSystem) -> None:
+    tdef = cast(NIXLBenchTestDefinition, nixl_bench_tr.test)
+    tdef.cmd_args.runtime_type = "ASIO"
+    nixl_bench_tr.test.cmd_args.backend = "POSIX"
+    strategy = NIXLBenchSlurmCommandGenStrategy(slurm_system, nixl_bench_tr)
+
+    with pytest.raises(ValueError, match="ASIO runtime requires exactly two NIXLBench processes"):
+        strategy.gen_srun_command()

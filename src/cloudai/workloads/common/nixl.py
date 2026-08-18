@@ -39,6 +39,7 @@ DEVICE_FORMAT: Final[re.Pattern[str]] = re.compile(r"^\d+:[A-Z]:/[/\da-zA-Z._-]+
 # 8gb is the default value in the nixl itself
 # it's not set as a default in the model below to not propagate it into the srun if the user didn't explicitly set it
 DEFAULT_TOTAL_BUFFER_SIZE = 8 * 1024 * 1024 * 1024
+MANAGED_ETCD_ENDPOINTS = "http://$NIXL_ETCD_ENDPOINTS"
 
 
 class NIXLBaseCmdArgs(CmdArgs):
@@ -146,9 +147,19 @@ class NIXLBaseTestDefinition(TestDefinition, Generic[NIXLCmdArgsT]):
         return self._etcd_image
 
     @property
+    def uses_etcd(self) -> bool:
+        """Return whether this workload needs CloudAI to manage an ETCD server."""
+        return True
+
+    @property
+    def uses_asio(self) -> bool:
+        """Return whether this workload uses NIXLBench's ASIO runtime."""
+        return False
+
+    @property
     def installables(self) -> list[Installable]:
         installables = [self.docker_image, *self.git_repos]
-        if self.etcd_image:
+        if self.uses_etcd and self.etcd_image:
             installables.append(self.etcd_image)
         return installables
 
@@ -254,9 +265,15 @@ class NIXLCmdGenBase(EtcdCmdGenMixin):
     @property
     def final_env_vars(self) -> dict[str, str | list[str]]:
         env_vars = super().final_env_vars
-        env_vars["NIXL_ETCD_NAMESPACE"] = "/nixl/kvbench/$(uuidgen)"
-        env_vars["NIXL_ETCD_ENDPOINTS"] = '"$SLURM_JOB_MASTER_NODE:2379"'
+        tdef = cast(NIXLBaseTestDefinition[NIXLBaseCmdArgs], self.test_run.test)
+        if tdef.uses_etcd:
+            env_vars["NIXL_ETCD_NAMESPACE"] = "/nixl/kvbench/$(uuidgen)"
+            env_vars["NIXL_ETCD_ENDPOINTS"] = '"$SLURM_JOB_MASTER_NODE:2379"'
         env_vars["SLURM_JOB_MASTER_NODE"] = "$(scontrol show hostname $SLURM_JOB_NODELIST | head -n 1)"
+        if tdef.uses_asio:
+            env_vars["NIXL_ASIO_ADDRESS"] = (
+                "$(getent ahostsv4 \"$SLURM_JOB_MASTER_NODE\" | awk 'NR == 1 {print $1; exit}')"
+            )
         return env_vars
 
     @final_env_vars.setter
@@ -309,7 +326,7 @@ class NIXLCmdGenBase(EtcdCmdGenMixin):
     def create_env_vars_file(self) -> None:
         with (self.test_run.output_path / "env_vars.sh").open("w") as f:
             for key, value in self.final_env_vars.items():
-                if key in {"NIXL_ETCD_ENDPOINTS", "NIXL_ETCD_NAMESPACE"}:
+                if key in {"NIXL_ASIO_ADDRESS", "NIXL_ETCD_ENDPOINTS", "NIXL_ETCD_NAMESPACE"}:
                     continue
                 if key == "SLURM_JOB_MASTER_NODE":  # this is an sbatch-level variable, not needed per-node
                     continue
