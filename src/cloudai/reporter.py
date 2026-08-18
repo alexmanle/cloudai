@@ -193,7 +193,7 @@ class JUnitReporter(Reporter):
 
     @staticmethod
     def _format_duration(duration: float) -> str:
-        return f"{duration:g}"
+        return f"{duration:.3f}"
 
     @classmethod
     def _add_log(cls, testcase: ET.Element, tag: str, path: Path) -> None:

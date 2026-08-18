@@ -383,14 +383,14 @@ def test_junit_reporter_generates_testcases_with_status_logs_and_duration(
         "failures": "1",
         "errors": "0",
         "skipped": "0",
-        "time": "6",
+        "time": "6.000",
     }
     assert suite is not None
     cases = suite.findall("testcase")
     assert [case.attrib for case in cases] == [
-        {"name": "benchmark", "classname": "test-scenario", "time": "1"},
-        {"name": "benchmark iter=1", "classname": "test-scenario", "time": "2"},
-        {"name": "benchmark iter=2", "classname": "test-scenario", "time": "3"},
+        {"name": "benchmark", "classname": "test-scenario", "time": "1.000"},
+        {"name": "benchmark iter=1", "classname": "test-scenario", "time": "2.000"},
+        {"name": "benchmark iter=2", "classname": "test-scenario", "time": "3.000"},
     ]
     assert cases[0].findtext("system-out") == "stdout 0\n"
     failure = cases[1].find("failure")
