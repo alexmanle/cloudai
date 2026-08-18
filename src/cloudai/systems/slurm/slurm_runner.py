@@ -137,7 +137,6 @@ class SlurmRunner(BaseRunner):
             test_cmd=" ".join(cmd_gen.generate_test_command()),
             job_root=job.test_run.output_path.absolute(),
             nodes=job.nodes,
-            num_nodes=len(job.nodes) if job.nodes else None,
         )
 
     def store_job_metadata(self, job: SlurmJob):

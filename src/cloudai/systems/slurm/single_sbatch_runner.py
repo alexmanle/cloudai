@@ -280,5 +280,4 @@ class SingleSbatchRunner(SlurmRunner):
             is_single_sbatch=True,
             job_root=self.scenario_root.absolute(),
             nodes=job.nodes,
-            num_nodes=len(job.nodes) if job.nodes else None,
         )

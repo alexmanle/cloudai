@@ -81,7 +81,6 @@ class SlurmJobMetadata(_SlurmStepMetadataBase):
     job_root: Path
     job_steps: list[SlurmStepMetadata]
     nodes: list[str] = Field(default_factory=list)
-    num_nodes: int | None = None
 
     @field_serializer("job_root")
     def _path_serializer(self, v: Path) -> str:

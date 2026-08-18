@@ -291,7 +291,6 @@ def test_build_config_uses_nodes_from_slurm_job_metadata(tmp_path: Path):
         job_root=tmp_path,
         job_steps=[],
         nodes=["node01", "node02"],
-        num_nodes=2,
     )
     with (tmp_path / "slurm-job.toml").open("w") as f:
         toml.dump(metadata.model_dump(mode="json"), f)
