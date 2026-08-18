@@ -17,6 +17,7 @@
 import contextlib
 import logging
 import tarfile
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -132,6 +133,90 @@ class StatusReporter(Reporter):
             console.print(table)  # doesn't print to stdout, captures only
 
         logging.info(capture.get())
+
+
+class JUnitReporter(Reporter):
+    """Generate a JUnit XML report for all scenario test executions."""
+
+    REPORT_FILE_NAME = "junit.xml"
+
+    def generate(self) -> None:
+        self.load_test_runs()
+
+        results = [(tr, tr.test.was_run_successful(tr), self._duration(tr.output_path)) for tr in self.trs]
+        failures = sum(not status.is_successful for _, status, _ in results)
+        durations = [duration for _, _, duration in results if duration is not None]
+
+        suite_attributes = {
+            "name": self.test_scenario.name,
+            "tests": str(len(results)),
+            "failures": str(failures),
+            "errors": "0",
+            "skipped": "0",
+        }
+        if durations:
+            suite_attributes["time"] = self._format_duration(sum(durations))
+
+        root = ET.Element("testsuites", suite_attributes)
+        suite = ET.SubElement(root, "testsuite", suite_attributes)
+        for tr, status, duration in results:
+            attributes = {"name": case_name(tr), "classname": self.test_scenario.name}
+            if duration is not None:
+                attributes["time"] = self._format_duration(duration)
+
+            testcase = ET.SubElement(suite, "testcase", attributes)
+            if not status.is_successful:
+                message = status.error_message or "Test run failed"
+                failure = ET.SubElement(testcase, "failure", {"message": self._xml_text(message)})
+                failure.text = self._xml_text(message)
+
+            self._add_log(testcase, "system-out", tr.output_path / "stdout.txt")
+            self._add_log(testcase, "system-err", tr.output_path / "stderr.txt")
+
+        ET.indent(root)
+        report_path = self.results_root / self.REPORT_FILE_NAME
+        ET.ElementTree(root).write(report_path, encoding="utf-8", xml_declaration=True)
+        logging.info("Generated JUnit report at %s", report_path)
+
+    @staticmethod
+    def _duration(output_path: Path) -> float | None:
+        # Duration is currently available only for Slurm workloads, which persist slurm-job.toml.
+        metadata_path = output_path / "slurm-job.toml"
+        if not metadata_path.is_file():
+            return None
+        try:
+            duration = toml.load(metadata_path).get("elapsed_time_sec")
+            return float(duration) if duration is not None else None
+        except (OSError, TypeError, ValueError, toml.TomlDecodeError) as exc:
+            logging.debug("Could not read execution duration from %s: %s", metadata_path, exc)
+            return None
+
+    @staticmethod
+    def _format_duration(duration: float) -> str:
+        return f"{duration:.3f}"
+
+    @classmethod
+    def _add_log(cls, testcase: ET.Element, tag: str, path: Path) -> None:
+        if not path.is_file():
+            return
+        try:
+            content = path.read_text(errors="replace")
+        except OSError as exc:
+            logging.debug("Could not read test log %s: %s", path, exc)
+            return
+        ET.SubElement(testcase, tag).text = cls._xml_text(content)
+
+    @staticmethod
+    def _xml_text(value: str) -> str:
+        """Remove control characters that XML 1.0 cannot represent."""
+        return "".join(
+            char
+            for char in value
+            if char in "\t\n\r"
+            or "\u0020" <= char <= "\ud7ff"
+            or "\ue000" <= char <= "\ufffd"
+            or "\U00010000" <= char <= "\U0010ffff"
+        )
 
 
 class DSEReporter(Reporter):
