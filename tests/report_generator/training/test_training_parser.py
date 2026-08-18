@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import toml
 
 from cloudai.core import ConfigPaths
 from cloudai.models.scenario import ReportConfig
@@ -30,6 +31,7 @@ from cloudai.report_generator.training import tb_reader
 from cloudai.report_generator.training.models import SCHEMA_VERSION, Scalar, TrainingResults, TrainingStep
 from cloudai.report_generator.training.parser import MegatronBridgeParser, MegatronParser, NeMoRunParser
 from cloudai.report_generator.training.reporter import TrainingReporter
+from cloudai.systems.slurm import SlurmJobMetadata
 
 
 def _scalars(rows: list[tuple]) -> list[Scalar]:
@@ -273,6 +275,43 @@ def test_build_config_resolves_paths_and_computes_fields():
     assert (config.fp8, config.fp8_recipe) == ("hybrid", "tensorwise")
     assert (config.num_nodes, config.world_size) == (8, 32)  # 8 nodes x 4 gpus
     assert config.data_parallel_size == 8  # 32 / (tp4 * pp1 * cp1)
+
+
+def test_build_config_uses_nodes_from_slurm_job_metadata(tmp_path: Path):
+    metadata = SlurmJobMetadata(
+        job_id=123,
+        name="training",
+        state="COMPLETED",
+        start_time="",
+        end_time="",
+        elapsed_time_sec=1,
+        exit_code="0:0",
+        srun_cmd="srun training",
+        test_cmd="training",
+        job_root=tmp_path,
+        job_steps=[],
+        nodes=["node01", "node02"],
+    )
+    with (tmp_path / "slurm-job.toml").open("w") as f:
+        toml.dump(metadata.model_dump(mode="json"), f)
+
+    parser = NeMoRunParser()
+    parser.get_model_config = lambda tr: {
+        "parallelism": {
+            "tensor_model_parallel_size": 1,
+            "pipeline_model_parallel_size": 1,
+            "context_parallel_size": 1,
+        }
+    }
+    config = parser._build_config(
+        _tr(output_path=tmp_path, nnodes=1, nodes=[], recipe_name="gpt3"),
+        _system(gpus_per_node=4),
+        _scenario(),
+    )
+
+    assert config.nodes == ["node01", "node02"]
+    assert config.num_nodes == 2
+    assert config.world_size == 8
 
 
 def test_build_config_leaves_world_size_none_without_gpus_per_node():

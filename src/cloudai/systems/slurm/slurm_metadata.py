@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
-# Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 
 class _SlurmStepMetadataBase(BaseModel):
@@ -80,6 +80,7 @@ class SlurmJobMetadata(_SlurmStepMetadataBase):
     is_single_sbatch: bool = False
     job_root: Path
     job_steps: list[SlurmStepMetadata]
+    nodes: list[str] = Field(default_factory=list)
 
     @field_serializer("job_root")
     def _path_serializer(self, v: Path) -> str:

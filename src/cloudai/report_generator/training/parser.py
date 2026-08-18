@@ -29,9 +29,11 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, ClassVar, Optional
 
+import toml
 import yaml
 
 from cloudai.core import System, TestRun, TestScenario
+from cloudai.systems.slurm import SlurmJobMetadata
 
 from .mappings import (
     MEGATRON_BRIDGE_MODEL_CONFIG,
@@ -160,6 +162,7 @@ class TrainingParser(ABC):
         """Map the framework + test config into TrainingConfig, then fill the CloudAI-computed fields."""
         env_vars = {**getattr(system, "global_env_vars", {}), **tr.test.extra_env_vars}
         config_paths = test_scenario.config_paths
+        num_nodes, nodes = self._get_used_nodes(tr)
         config = TrainingConfig(
             test_id=tr.name,
             test_name=tr.test.name,
@@ -171,8 +174,8 @@ class TrainingParser(ABC):
             test_scenario_path=str(config_paths.test_scenario_path) if config_paths is not None else "",
             cloudai_execution_node=socket.gethostname(),
             env_vars=env_vars,
-            num_nodes=tr.nnodes,
-            nodes=list(tr.nodes),
+            num_nodes=num_nodes,
+            nodes=nodes,
             **self._resolve_model_config(tr),
             **self._resolve_test_config(tr),
         )
@@ -195,6 +198,24 @@ class TrainingParser(ABC):
         # Model architecture
         config.model_name = self.get_model_name(tr)
         return config
+
+    @staticmethod
+    def _get_used_nodes(tr: TestRun) -> tuple[int, list[str]]:
+        slurm_job_path = tr.output_path / "slurm-job.toml"
+        if not slurm_job_path.is_file():
+            return tr.nnodes, list(tr.nodes)
+
+        try:
+            with slurm_job_path.open() as f:
+                metadata = SlurmJobMetadata.model_validate(toml.load(f))
+        except Exception as exc:
+            logging.warning("Could not load Slurm allocation from '%s': %s", slurm_job_path, exc)
+            return tr.nnodes, list(tr.nodes)
+
+        if not metadata.nodes:
+            return tr.nnodes, list(tr.nodes)
+
+        return len(metadata.nodes), list(metadata.nodes)
 
     @staticmethod
     def _get_clique_size(env_vars: dict[str, Any]) -> Optional[int]:
