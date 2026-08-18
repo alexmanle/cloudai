@@ -331,5 +331,7 @@ def test_report_configs():
         "vllm_comparison",
         "sglang_comparison",
     ]
+    disabled_configs = {"junit"}
     for name, rep_config in configs.items():
-        assert rep_config.enable is True, f"Report {name} is not enabled by default"
+        expected_be_enabled = name not in disabled_configs
+        assert rep_config.enable is expected_be_enabled, f"Report {name} has an unexpected default state"

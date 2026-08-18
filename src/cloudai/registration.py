@@ -332,7 +332,7 @@ def register_all():
         ReportConfig(enable=True),
     )
     Registry().add_scenario_report("status", StatusReporter, ReportConfig(enable=True))
-    Registry().add_scenario_report("junit", JUnitReporter, ReportConfig(enable=True))
+    Registry().add_scenario_report("junit", JUnitReporter, ReportConfig(enable=False))
     Registry().add_scenario_report("dse", DSEReporter, ReportConfig(enable=True))
     Registry().add_scenario_report("tarball", TarballReporter, ReportConfig(enable=True))
     Registry().add_scenario_report(
