@@ -70,6 +70,28 @@ supported under ``[[Tests]]`` in a test scenario. Define them in a test definiti
 ``test_name`` when custom benchmark or semantic-evaluation arguments are needed.
 
 
+Local Models
+------------
+Set ``cmd_args.model`` to an absolute, container-visible path to load an existing model directory instead of
+downloading a model from Hugging Face. Use ``extra_container_mounts`` to mount a host or shared-filesystem directory.
+
+.. code-block:: toml
+   :caption: test.toml (local model)
+
+   name = "sglang_local_model"
+   description = "SGLang with a local model"
+   test_template_name = "sglang"
+   extra_container_mounts = [
+     "/lustre/models/custom:/models/custom:ro",
+   ]
+
+   [cmd_args]
+   docker_image_url = "lmsysorg/sglang:dev-cu13"
+   model = "/models/custom"
+
+The mounted directory must contain a model, configuration, and tokenizer supported by SGLang.
+
+
 Semantic Validation
 -------------------
 To run GSM8K semantic validation after the serving benchmark, add ``semantic_eval_cmd_args``. CloudAI reports

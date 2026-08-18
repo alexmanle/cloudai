@@ -190,7 +190,10 @@ class LLMServingTestDefinition(TestDefinition, Generic[LLMServingCmdArgsT]):
 
     @property
     def installables(self) -> list[Installable]:
-        return [*self.git_repos, self.docker_image, self.hf_model, *self.extra_installables]
+        installables: list[Installable] = [*self.git_repos, self.docker_image]
+        if not Path(self.cmd_args.model).is_absolute():
+            installables.append(self.hf_model)
+        return [*installables, *self.extra_installables]
 
     def model_post_init(self, __context: Any) -> None:
         super().model_post_init(__context)
