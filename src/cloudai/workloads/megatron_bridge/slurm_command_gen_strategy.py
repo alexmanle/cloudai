@@ -237,7 +237,9 @@ class MegatronBridgeSlurmCommandGenStrategy(SlurmCommandGenStrategy):
             if self._needs_job_shell_expansion(value_str):
                 # Quote the RHS so whitespace in the value is preserved when the job
                 # shell runs `export`. Double quotes still allow $VAR / $((...)) expansion.
-                shell_value = value_str.replace('"', '\\"')
+                # Escape backslashes before quotes so a trailing '\' cannot escape the
+                # closing '"' and so embedded '\"' sequences stay valid.
+                shell_value = value_str.replace("\\", "\\\\").replace('"', '\\"')
                 parts.extend(["-cb", shlex.quote(f'export {key}="{shell_value}"')])
             else:
                 parts.extend(["-E", shlex.quote(f"{key}={value_str}")])
