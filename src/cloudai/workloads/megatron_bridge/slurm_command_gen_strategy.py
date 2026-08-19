@@ -89,6 +89,7 @@ class MegatronBridgeSlurmCommandGenStrategy(SlurmCommandGenStrategy):
         full_cmd = self._wrap_launcher_for_job_id_and_quiet_output(
             " ".join(parts),
             launcher_python,
+            args.wandb_version,
             pre_hook_sbatch_path=pre_hook_sbatch_path,
             base_slurm_params=base_slurm_params,
             capture_nodelist=capture_nodelist,
@@ -292,6 +293,7 @@ class MegatronBridgeSlurmCommandGenStrategy(SlurmCommandGenStrategy):
         self,
         launcher_cmd: str,
         launcher_python: str,
+        wandb_version: str,
         pre_hook_sbatch_path: Optional[Path] = None,
         base_slurm_params: str = "",
         capture_nodelist: bool = False,
@@ -378,9 +380,9 @@ class MegatronBridgeSlurmCommandGenStrategy(SlurmCommandGenStrategy):
             *pre_hook_lines,
             ': >"$LOG"',
             "WANDB_INSTALL_RC=0",
-            f'{shlex.quote(launcher_python)} -m pip install wandb numpy==1.26.4 >>"$LOG" 2>&1 || WANDB_INSTALL_RC=$?',
+            f'{shlex.quote(launcher_python)} -m pip install wandb=={wandb_version} numpy==1.26.4 >>"$LOG" 2>&1 || WANDB_INSTALL_RC=$?',  # noqa: E501
             'if [ "${WANDB_INSTALL_RC}" -ne 0 ]; then',
-            '  echo "Failed to install runtime deps (wandb, numpy==1.26.4) in launcher venv (exit ${WANDB_INSTALL_RC})." >&2',  # noqa: E501
+            f'  echo "Failed to install runtime deps (wandb=={wandb_version}, numpy==1.26.4) in launcher venv (exit ${{WANDB_INSTALL_RC}})." >&2',  # noqa: E501
             '  tail -n 40 "$LOG" >&2 || true',
             '  exit "${WANDB_INSTALL_RC}"',
             "fi",
