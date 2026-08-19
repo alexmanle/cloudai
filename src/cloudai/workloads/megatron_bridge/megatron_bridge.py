@@ -58,6 +58,7 @@ class MegatronBridgeCmdArgs(CmdArgs):
     wandb_entity_name: Optional[str] = Field(default=None)
     wandb_experiment_name: Optional[str] = Field(default=None)
     wandb_save_dir: Optional[str] = Field(default=None)
+    wandb_version: str = Field(default="0.28.1", description="W&B version installed in the launcher environment.")
 
     # Retries
     max_retries: Optional[int] = Field(default=1)
