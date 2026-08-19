@@ -241,6 +241,8 @@ class TestMegatronBridgeSlurmCommandGenStrategy:
         cmd_gen = MegatronBridgeSlurmCommandGenStrategy(configured_slurm_system, tr)
         wrapper_content = self._wrapper_content(cmd_gen)
         assert "--custom_env_vars" not in wrapper_content
+        assert " -ce " not in f" {wrapper_content} "
+        assert "-cb" not in wrapper_content
         assert "-E CUDA_VISIBLE_DEVICES=0,1,2,3" in wrapper_content
         assert "-E NCCL_DEBUG=INFO" in wrapper_content
         assert "-E GPU_METRICS_NODES=0,1" in wrapper_content
