@@ -227,18 +227,40 @@ class TestMegatronBridgeSlurmCommandGenStrategy:
         wrapper_content = self._wrapper_content(cmd_gen)
         assert "--cuda_graph_scope moe_router,moe_preprocess" in wrapper_content
 
-    def test_env_vars_are_forwarded_via_custom_bash_cmds(
+    def test_static_env_vars_are_forwarded_via_E(
         self, configured_slurm_system: SlurmSystem, make_test_run: Callable[..., TestRun]
     ) -> None:
         tr = make_test_run()
         tdef = cast(MegatronBridgeTestDefinition, tr.test)
-        tdef.extra_env_vars = {"CUDA_VISIBLE_DEVICES": "0,1,2,3", "NCCL_DEBUG": "INFO"}
+        tdef.extra_env_vars = {
+            "CUDA_VISIBLE_DEVICES": "0,1,2,3",
+            "NCCL_DEBUG": "INFO",
+            "GPU_METRICS_NODES": "0,1",
+        }
 
         cmd_gen = MegatronBridgeSlurmCommandGenStrategy(configured_slurm_system, tr)
         wrapper_content = self._wrapper_content(cmd_gen)
         assert "--custom_env_vars" not in wrapper_content
-        assert "-cb 'export CUDA_VISIBLE_DEVICES=0,1,2,3'" in wrapper_content
-        assert "-cb 'export NCCL_DEBUG=INFO'" in wrapper_content
+        assert "-E CUDA_VISIBLE_DEVICES=0,1,2,3" in wrapper_content
+        assert "-E NCCL_DEBUG=INFO" in wrapper_content
+        assert "-E GPU_METRICS_NODES=0,1" in wrapper_content
+
+    def test_shell_expanding_env_vars_are_forwarded_via_cb(
+        self, configured_slurm_system: SlurmSystem, make_test_run: Callable[..., TestRun]
+    ) -> None:
+        tr = make_test_run(output_subdir="out_shell_env")
+        tdef = cast(MegatronBridgeTestDefinition, tr.test)
+        tdef.extra_env_vars = {
+            "PYTHONPATH": "/opt/Megatron-Bridge/3rdparty/Megatron-LM:${PYTHONPATH}",
+            "NCCL_MNNVL_CLIQUE_ID": "$(( ($SLURM_PROCID)  / ($CLIQUE_SIZE) ))",
+            "NCCL_DEBUG": "INFO",
+        }
+
+        cmd_gen = MegatronBridgeSlurmCommandGenStrategy(configured_slurm_system, tr)
+        wrapper_content = self._wrapper_content(cmd_gen)
+        assert "-cb 'export PYTHONPATH=/opt/Megatron-Bridge/3rdparty/Megatron-LM:${PYTHONPATH}'" in wrapper_content
+        assert "-cb 'export NCCL_MNNVL_CLIQUE_ID=$(( ($SLURM_PROCID)  / ($CLIQUE_SIZE) ))'" in wrapper_content
+        assert "-E NCCL_DEBUG=INFO" in wrapper_content
 
     def test_container_runtime_env_vars_exported_in_wrapper_script(
         self, configured_slurm_system: SlurmSystem, make_test_run: Callable[..., TestRun]
@@ -264,10 +286,10 @@ class TestMegatronBridgeSlurmCommandGenStrategy:
         assert mvd_idx < launcher_idx, "MELLANOX_VISIBLE_DEVICES must be exported before the launcher"
         assert nvd_idx < launcher_idx, "NVIDIA_VISIBLE_DEVICES must be exported before the launcher"
 
-        assert "-cb 'export MELLANOX_VISIBLE_DEVICES=0,1,4,5'" in wrapper_content
-        assert "-cb 'export NVIDIA_VISIBLE_DEVICES=all'" in wrapper_content
-        assert "-cb 'export NCCL_IB_HCA=roce_p0_r0,roce_p0_r1,roce_p0_r2,roce_p0_r3'" in wrapper_content
-        assert "-cb 'export NCCL_DEBUG=INFO'" in wrapper_content
+        assert "-E MELLANOX_VISIBLE_DEVICES=0,1,4,5" in wrapper_content
+        assert "-E NVIDIA_VISIBLE_DEVICES=all" in wrapper_content
+        assert "-E NCCL_IB_HCA=roce_p0_r0,roce_p0_r1,roce_p0_r2,roce_p0_r3" in wrapper_content
+        assert "-E NCCL_DEBUG=INFO" in wrapper_content
 
         assert "export NCCL_IB_HCA=" not in wrapper_content.split("setup_experiment.py")[0]
         assert "export NCCL_DEBUG=" not in wrapper_content.split("setup_experiment.py")[0]
