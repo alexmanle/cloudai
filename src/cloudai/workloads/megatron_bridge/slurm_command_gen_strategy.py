@@ -235,7 +235,10 @@ class MegatronBridgeSlurmCommandGenStrategy(SlurmCommandGenStrategy):
         for key, value in sorted(self.final_env_vars.items()):
             value_str = str(value)
             if self._needs_job_shell_expansion(value_str):
-                parts.extend(["-cb", shlex.quote(f"export {key}={value_str}")])
+                # Quote the RHS so whitespace in the value is preserved when the job
+                # shell runs `export`. Double quotes still allow $VAR / $((...)) expansion.
+                shell_value = value_str.replace('"', '\\"')
+                parts.extend(["-cb", shlex.quote(f'export {key}="{shell_value}"')])
             else:
                 parts.extend(["-E", shlex.quote(f"{key}={value_str}")])
         return parts

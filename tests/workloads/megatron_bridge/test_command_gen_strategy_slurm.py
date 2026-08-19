@@ -258,9 +258,26 @@ class TestMegatronBridgeSlurmCommandGenStrategy:
 
         cmd_gen = MegatronBridgeSlurmCommandGenStrategy(configured_slurm_system, tr)
         wrapper_content = self._wrapper_content(cmd_gen)
-        assert "-cb 'export PYTHONPATH=/opt/Megatron-Bridge/3rdparty/Megatron-LM:${PYTHONPATH}'" in wrapper_content
-        assert "-cb 'export NCCL_MNNVL_CLIQUE_ID=$(( ($SLURM_PROCID)  / ($CLIQUE_SIZE) ))'" in wrapper_content
+        assert (
+            "-cb 'export PYTHONPATH=\"/opt/Megatron-Bridge/3rdparty/Megatron-LM:${PYTHONPATH}\"'" in wrapper_content
+        )
+        assert (
+            "-cb 'export NCCL_MNNVL_CLIQUE_ID=\"$(( ($SLURM_PROCID)  / ($CLIQUE_SIZE) ))\"'" in wrapper_content
+        )
         assert "-E NCCL_DEBUG=INFO" in wrapper_content
+
+    def test_shell_expanding_env_vars_with_whitespace_are_quoted(
+        self, configured_slurm_system: SlurmSystem, make_test_run: Callable[..., TestRun]
+    ) -> None:
+        tr = make_test_run(output_subdir="out_shell_env_ws")
+        tdef = cast(MegatronBridgeTestDefinition, tr.test)
+        tdef.extra_env_vars = {
+            "PYTHONPATH": "/opt/Megatron Bridge:${PYTHONPATH}",
+        }
+
+        cmd_gen = MegatronBridgeSlurmCommandGenStrategy(configured_slurm_system, tr)
+        wrapper_content = self._wrapper_content(cmd_gen)
+        assert "-cb 'export PYTHONPATH=\"/opt/Megatron Bridge:${PYTHONPATH}\"'" in wrapper_content
 
     def test_container_runtime_env_vars_exported_in_wrapper_script(
         self, configured_slurm_system: SlurmSystem, make_test_run: Callable[..., TestRun]
