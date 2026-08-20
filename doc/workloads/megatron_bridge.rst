@@ -84,6 +84,27 @@ Test-in-Scenario example:
      domain = "llm"
      compute_dtype = "fp8_mx"
 
+Executor Environment Variables
+------------------------------
+
+By default, CloudAI forwards ``extra_env_vars`` as ``-cb export KEY=VALUE``
+commands. This preserves compatibility with Megatron-Bridge releases such as
+v0.3.0 that do not support ``-E/--env`` and allows values to reference job-shell
+variables such as ``$SLURM_PROCID``.
+
+For a newer Megatron-Bridge version, variables that must be registered in the
+NeMo-Run executor's ``env_vars`` and ``container_env`` can be explicitly set
+under ``cmd_args.executor_env_vars``:
+
+.. code-block:: toml
+
+   [cmd_args.executor_env_vars]
+   GPU_METRICS_NODES = "0,1"
+
+Each entry is passed to Megatron-Bridge as a repeated ``-E KEY=VALUE`` argument.
+Values are forwarded literally and may contain commas. Do not use this option
+with a Megatron-Bridge version that predates ``-E/--env``.
+
 Chakra / Kineto Tracing
 -----------------------
 

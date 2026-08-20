@@ -226,6 +226,14 @@ class MegatronBridgeSlurmCommandGenStrategy(SlurmCommandGenStrategy):
             exports.extend(["-cb", shlex.quote(f"export {key}={value}")])
         return exports
 
+    @staticmethod
+    def _build_executor_env_args(executor_env_vars: dict[str, str]) -> list[str]:
+        """Build repeated ``-E KEY=VALUE`` entries for NeMo-Run executor environment variables."""
+        parts: list[str] = []
+        for key, value in sorted(executor_env_vars.items()):
+            parts.extend(["-E", shlex.quote(f"{key}={value}")])
+        return parts
+
     def _container_runtime_env_exports(self) -> list[str]:
         """
         Build ``export`` lines for container-runtime env vars.
@@ -543,10 +551,15 @@ class MegatronBridgeSlurmCommandGenStrategy(SlurmCommandGenStrategy):
         if mounts:
             add("-cm", ",".join(mounts))
 
-        # Pass extra env variables as `-cb export KEY=value` commands to avoid Megatron-Bridge's
-        # --custom_env_vars parser limitation for comma-containing values.
+        # Preserve extra_env_vars compatibility with Megatron-Bridge versions that
+        # predate -E/--env by forwarding them as job-shell exports.
         if self.final_env_vars:
             parts.extend(self._build_custom_bash_env_exports())
+
+        # Explicit opt-in for variables that must be registered in NeMo-Run's
+        # executor env_vars/container_env. Requires Megatron-Bridge -E support.
+        if args.executor_env_vars:
+            parts.extend(self._build_executor_env_args(args.executor_env_vars))
 
         # Model flags (Megatron-Bridge main-branch API)
         add_field("domain", "--domain", args.domain)

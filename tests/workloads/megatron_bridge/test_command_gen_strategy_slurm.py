@@ -239,6 +239,24 @@ class TestMegatronBridgeSlurmCommandGenStrategy:
         assert "--custom_env_vars" not in wrapper_content
         assert "-cb 'export CUDA_VISIBLE_DEVICES=0,1,2,3'" in wrapper_content
         assert "-cb 'export NCCL_DEBUG=INFO'" in wrapper_content
+        assert " -E " not in f" {wrapper_content} "
+
+    def test_executor_env_vars_are_forwarded_via_E(
+        self, configured_slurm_system: SlurmSystem, make_test_run: Callable[..., TestRun]
+    ) -> None:
+        tr = make_test_run(
+            output_subdir="out_executor_env",
+            cmd_args_overrides={"executor_env_vars": {"GPU_METRICS_NODES": "0,1", "NCCL_DEBUG": "INFO"}},
+        )
+
+        cmd_gen = MegatronBridgeSlurmCommandGenStrategy(configured_slurm_system, tr)
+        wrapper_content = self._wrapper_content(cmd_gen)
+        assert "--custom_env_vars" not in wrapper_content
+        assert " -ce " not in f" {wrapper_content} "
+        assert "-E GPU_METRICS_NODES=0,1" in wrapper_content
+        assert "-E NCCL_DEBUG=INFO" in wrapper_content
+        assert "-cb 'export GPU_METRICS_NODES=0,1'" not in wrapper_content
+        assert "-cb 'export NCCL_DEBUG=INFO'" not in wrapper_content
 
     def test_container_runtime_env_vars_exported_in_wrapper_script(
         self, configured_slurm_system: SlurmSystem, make_test_run: Callable[..., TestRun]
