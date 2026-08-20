@@ -36,6 +36,13 @@ class MegatronBridgeCmdArgs(CmdArgs):
     enable_vboost: bool | None = Field(default=False)
     dryrun: bool | None = Field(default=False)
     enable_nsys: bool | None = Field(default=False)
+    executor_env_vars: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Environment variables passed through Megatron-Bridge -E/--env into NeMo-Run executor "
+            "env_vars/container_env. Requires a Megatron-Bridge version that supports -E."
+        ),
+    )
 
     # Domain / model overrides (argument_parser main + model)
     domain: Optional[str] = Field(default=None, description="Domain: llm, vlm, or qwen3vl (default llm).")

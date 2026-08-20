@@ -214,35 +214,24 @@ class MegatronBridgeSlurmCommandGenStrategy(SlurmCommandGenStrategy):
         with log_file.open("w") as f:
             f.write(f"{command}\n")
 
-    @staticmethod
-    def _needs_job_shell_expansion(value: str) -> bool:
-        """Return True when value must be evaluated in the job shell (not stored literally)."""
-        return any(tok in value for tok in ("$", "`"))
-
-    def _build_env_forwarding_args(self) -> list[str]:
+    def _build_custom_bash_env_exports(self) -> list[str]:
         """
-        Forward ``extra_env_vars`` into Megatron-Bridge / NeMo-Run.
+        Build repeated -cb entries that export env vars inside the launched Slurm job shell.
 
-        Static values use ``-E KEY=VALUE`` so they land in NeMo-Run ``env_vars`` and
-        ``container_env`` (required for consumers like nsys ``GPU_METRICS_NODES``).
-        ``-E`` also preserves commas in values, unlike ``--custom_env_vars`` / ``-ce``.
-
-        Values that need job-shell expansion (``$SLURM_*``, ``$((...))``,
-        ``${PYTHONPATH}``, command substitution, etc.) still use ``-cb export ...``
-        so they expand on the compute job rather than being stored as literals.
+        We quote each full `export KEY=value` command so `$SLURM_*` and commas survive
+        argument parsing on the submit node and are expanded/interpreted in the job shell.
         """
-        parts: list[str] = []
+        exports: list[str] = []
         for key, value in sorted(self.final_env_vars.items()):
-            value_str = str(value)
-            if self._needs_job_shell_expansion(value_str):
-                # Quote the RHS so whitespace in the value is preserved when the job
-                # shell runs `export`. Double quotes still allow $VAR / $((...)) expansion.
-                # Escape backslashes before quotes so a trailing '\' cannot escape the
-                # closing '"' and so embedded '\"' sequences stay valid.
-                shell_value = value_str.replace("\\", "\\\\").replace('"', '\\"')
-                parts.extend(["-cb", shlex.quote(f'export {key}="{shell_value}"')])
-            else:
-                parts.extend(["-E", shlex.quote(f"{key}={value_str}")])
+            exports.extend(["-cb", shlex.quote(f"export {key}={value}")])
+        return exports
+
+    @staticmethod
+    def _build_executor_env_args(executor_env_vars: dict[str, str]) -> list[str]:
+        """Build repeated ``-E KEY=VALUE`` entries for NeMo-Run executor environment variables."""
+        parts: list[str] = []
+        for key, value in sorted(executor_env_vars.items()):
+            parts.extend(["-E", shlex.quote(f"{key}={value}")])
         return parts
 
     def _container_runtime_env_exports(self) -> list[str]:
@@ -255,9 +244,8 @@ class MegatronBridgeSlurmCommandGenStrategy(SlurmCommandGenStrategy):
         environment **before** the Megatron-Bridge launcher calls ``sbatch`` so that
         Slurm inherits them into the job and ``srun`` passes them to the container
         runtime.  Exporting them in the wrapper script (which runs on the submit
-        node) achieves this.  The same variables are still forwarded via ``-E`` /
-        ``-cb`` as well, so they are also set inside the container for any runtime
-        readers.
+        node) achieves this.  The same variables are still passed via ``-cb`` as
+        well, so they are also set inside the container for any runtime readers.
         """
         lines: list[str] = []
         for key, value in sorted(self.final_env_vars.items()):
@@ -563,9 +551,15 @@ class MegatronBridgeSlurmCommandGenStrategy(SlurmCommandGenStrategy):
         if mounts:
             add("-cm", ",".join(mounts))
 
-        # Forward extra env vars via -E (NeMo container_env) or -cb (job-shell expansion).
+        # Preserve extra_env_vars compatibility with Megatron-Bridge versions that
+        # predate -E/--env by forwarding them as job-shell exports.
         if self.final_env_vars:
-            parts.extend(self._build_env_forwarding_args())
+            parts.extend(self._build_custom_bash_env_exports())
+
+        # Explicit opt-in for variables that must be registered in NeMo-Run's
+        # executor env_vars/container_env. Requires Megatron-Bridge -E support.
+        if args.executor_env_vars:
+            parts.extend(self._build_executor_env_args(args.executor_env_vars))
 
         # Model flags (Megatron-Bridge main-branch API)
         add_field("domain", "--domain", args.domain)
