@@ -45,7 +45,7 @@ def test_run() -> TestRun:
         name="sc",
         description="desc",
         test_template_name="tt",
-        cmd_args=SlurmContainerCmdArgs(docker_image_url="docker://url", cmd="cmd"),
+        cmd_args=SlurmContainerCmdArgs(docker_image_url="docker://url", cmd="cmd", check_exit_code=True),
     )
     tr = TestRun(name="name", test=tdef, num_nodes=1, nodes=[])
     return tr
@@ -67,6 +67,16 @@ def test_default(slurm_system: SlurmSystem, test_run: TestRun) -> None:
         f'{srun_part} bash -c "source {(test_run.output_path / "env_vars.sh").absolute()}; cmd"'
         f"{_status_capture(test_run)}"
     )
+
+
+def test_exit_code_check_disabled_does_not_capture_status(slurm_system: SlurmSystem, test_run: TestRun) -> None:
+    tdef = cast(SlurmContainerTestDefinition, test_run.test)
+    tdef.cmd_args.check_exit_code = False
+    cgs = SlurmContainerCommandGenStrategy(slurm_system, test_run)
+
+    cmd = cgs.gen_srun_command()
+
+    assert EXIT_CODE_FILE_NAME not in cmd
 
 
 def test_with_nsys(slurm_system: SlurmSystem, test_run: TestRun) -> None:

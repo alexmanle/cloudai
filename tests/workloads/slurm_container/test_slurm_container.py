@@ -29,8 +29,26 @@ class TestSlurmContainerSuccessCheck:
             name="sc",
             description="desc",
             test_template_name="SlurmContainer",
+            cmd_args=SlurmContainerCmdArgs(
+                docker_image_url="docker://url",
+                cmd="bash /scripts/run.sh",
+                check_exit_code=True,
+            ),
+        )
+
+    def test_exit_code_check_disabled_by_default(self, base_tr: TestRun) -> None:
+        tdef = SlurmContainerTestDefinition(
+            name="sc",
+            description="desc",
+            test_template_name="SlurmContainer",
             cmd_args=SlurmContainerCmdArgs(docker_image_url="docker://url", cmd="bash /scripts/run.sh"),
         )
+        self._write_exit_code(base_tr, "42")
+
+        result = tdef.was_run_successful(base_tr)
+
+        assert getattr(tdef.cmd_args, "check_exit_code", None) is False
+        assert result.is_successful
 
     def _write_exit_code(self, tr: TestRun, exit_code: str) -> None:
         tr.output_path.mkdir(parents=True, exist_ok=True)

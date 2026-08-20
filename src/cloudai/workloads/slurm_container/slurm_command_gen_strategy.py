@@ -43,6 +43,10 @@ class SlurmContainerCommandGenStrategy(SlurmCommandGenStrategy):
 
     def _gen_srun_command(self) -> str:
         srun_command = super()._gen_srun_command()
+        tdef = cast(SlurmContainerTestDefinition, self.test_run.test)
+        if not tdef.cmd_args.check_exit_code:
+            return srun_command
+
         exit_code_path = shlex.quote(str((self.test_run.output_path / EXIT_CODE_FILE_NAME).absolute()))
         return (
             f"{srun_command}; "

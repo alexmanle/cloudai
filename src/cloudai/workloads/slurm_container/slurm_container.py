@@ -29,6 +29,10 @@ class SlurmContainerCmdArgs(CmdArgs):
 
     docker_image_url: str
     cmd: str
+    check_exit_code: bool = Field(
+        default=False,
+        description="Whether to grade the run from the container command exit code.",
+    )
 
 
 class SlurmContainerTestDefinition(TestDefinition):
@@ -58,6 +62,9 @@ class SlurmContainerTestDefinition(TestDefinition):
 
     def was_run_successful(self, tr: TestRun) -> JobStatusResult:
         """Grade the run from the container command exit code."""
+        if not self.cmd_args.check_exit_code:
+            return JobStatusResult(is_successful=True)
+
         exit_code_path = tr.output_path / EXIT_CODE_FILE_NAME
         if not exit_code_path.is_file():
             return JobStatusResult(
