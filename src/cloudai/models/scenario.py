@@ -154,9 +154,8 @@ class TestRunModel(BaseModel):
                     f"Test type '{self.test_template_name}' not found in the test definitions. "
                     f"Possible values are: {', '.join(registry.test_definitions_map.keys())}"
                 )
-        else:
-            if self.test_template_name is not None:
-                raise ValueError("'test_template_name' must not be set if 'test_name' or 'path' is set.")
+        elif self.test_template_name is not None:
+            raise ValueError("'test_template_name' must not be set if 'test_name' or 'path' is set.")
 
         return self
 

@@ -15,6 +15,7 @@
 # limitations under the License.
 
 
+import logging
 from pathlib import Path
 from typing import Set, Type
 
@@ -1008,6 +1009,22 @@ class TestPathReference:
             parser._prepare_tdef(test_info)
 
         assert exc_info.match("does not exist")
+
+    def test_missing_referenced_file_logs_the_error(
+        self, tmp_path: Path, slurm_system: SlurmSystem, caplog: pytest.LogCaptureFixture
+    ):
+        """The top-level `Parser.parse()` catches `TestScenarioParsingError` and exits without
+        printing the exception itself, relying on the raiser having already logged it. Without
+        this, a missing path reference fails with no error message at all in `run`/`dry-run`."""
+        scenario_path = tmp_path / "scenario.toml"
+        scenario_path.write_text("")
+        parser = TestScenarioParser(scenario_path, slurm_system, {}, {})
+
+        test_info = TestRunModel(id="1", path="does-not-exist.toml")
+        with caplog.at_level(logging.ERROR), pytest.raises(TestScenarioParsingError):
+            parser._prepare_tdef(test_info)
+
+        assert "does not exist" in caplog.text
 
     def test_full_scenario_toml_with_path_reference(self, tmp_path: Path, slurm_system: SlurmSystem):
         (tmp_path / "nccl.toml").write_text(

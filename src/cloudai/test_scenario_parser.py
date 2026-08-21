@@ -228,13 +228,15 @@ class TestScenarioParser:
             tc_defined = test_info.tdef_model_dump(by_alias=True)
             merged_data = deep_merge(test_defined, tc_defined)
             test = tp.load_test_definition(merged_data)
-        elif test_info.path:  # test referenced by file path, relative to this scenario file's directory
+        elif test_info.path:
             resolved_path = (self.file_path.parent / test_info.path).resolve()
             if not resolved_path.is_file():
-                raise TestScenarioParsingError(
+                msg = (
                     f"Test case '{test_info.id}' references path '{test_info.path}', "
                     f"which resolves to '{resolved_path}', but that file does not exist."
                 )
+                logging.error(msg)
+                raise TestScenarioParsingError(msg)
             tp.current_file = resolved_path
             with resolved_path.open() as fh:
                 test_defined = load_test_toml_file(fh, resolved_path)
