@@ -20,7 +20,7 @@ def _write_command(bin_dir: Path, name: str, body: str) -> None:
     command.chmod(0o755)
 
 
-def _run_collector(tmp_path: Path, commands: dict[str, str], mode: str = "runtime") -> subprocess.CompletedProcess[str]:
+def _run_collector(tmp_path: Path, commands: dict[str, str], mode: str = "all") -> subprocess.CompletedProcess[str]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     for name, body in commands.items():
@@ -72,6 +72,10 @@ EOF""",
 esac""",
             "ofed_info": "printf 'MLNX_OFED_LINUX-24.10-1.1.4.0:\\n'",
             "fi_info": "printf 'libfabric: 1.22.0\\n'",
+            "lldpctl": """cat <<'EOF'
+lldp.eth0.chassis.name=eos-leaf-01
+lldp.eth0.chassis.descr=NVIDIA Spectrum-4
+EOF""",
             "mpirun": "printf 'mpirun (Open MPI) 4.1.7a1\\n'",
         },
     )
@@ -104,8 +108,8 @@ esac""",
         "nic_count": 2,
         "nic_inventory": "Mellanox Technologies MT2910 Family [ConnectX-7] [15b3:1021] x2",
         "hca_firmware_versions": "mlx5_0=28.43.2026",
-        "switch_type": "null",
-        "network_name": "null",
+        "switch_type": "NVIDIA Spectrum-4 x1",
+        "network_name": "eos-leaf-01 x1",
         "mofed_version": "MLNX_OFED_LINUX-24.10-1.1.4.0",
         "doca_host_version": "2.9.2-0.1.0",
         "libfabric_version": "1.22.0",
@@ -144,21 +148,22 @@ def test_collects_container_metadata_in_legacy_sections(tmp_path: Path) -> None:
     assert result.stderr == ""
     metadata = toml.loads(result.stdout)
     assert "runtime" not in metadata
-    assert metadata["system"]["os_version"] == "24.04 LTS"
+    assert "system" not in metadata
+    assert metadata["network"] == {"libfabric_version": "null"}
     assert metadata["mpi"] == {"mpi_type": "openmpi", "mpi_version": "4.1.9a1", "hpcx_version": "null"}
     assert metadata["cuda"]["cuda_runtime_version"] == "13.1"
     assert metadata["cuda"]["cuda_toolkit_version"] == "13.0"
 
 
-def test_collects_host_metadata_under_host_namespace(tmp_path: Path) -> None:
+def test_collects_only_host_owned_sections_in_host_mode(tmp_path: Path) -> None:
     result = _run_collector(tmp_path, {}, mode="host")
 
     assert result.returncode == 0
-    metadata = toml.loads(result.stdout)
-    assert list(metadata) == ["host"]
-    assert metadata["host"]["user"] == 'metadata"user'
-    assert metadata["host"]["system"]["os_type"] == "ubuntu"
-    assert "slurm" not in metadata["host"]
+    assert result.stdout.startswith("\nnics = ")
+    assert "\n[system]\n" in result.stdout
+    assert "\n[mpi]\n" not in result.stdout
+    assert "\n[nccl]\n" not in result.stdout
+    assert "libfabric_version" not in result.stdout
 
 
 def test_runtime_and_host_outputs_form_one_valid_metadata_document(tmp_path: Path) -> None:
@@ -172,6 +177,5 @@ def test_runtime_and_host_outputs_form_one_valid_metadata_document(tmp_path: Pat
     metadata = toml.loads(f"{runtime_result.stdout}\n{host_result.stdout}")
 
     parsed = SlurmSystemMetadata.model_validate(metadata)
-    assert parsed.host is not None
     assert parsed.system.os_type == "ubuntu"
-    assert parsed.host.system.os_type == "ubuntu"
+    assert parsed.mpi.mpi_type == "null"

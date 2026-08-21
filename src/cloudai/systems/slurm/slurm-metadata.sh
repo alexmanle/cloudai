@@ -19,6 +19,16 @@ safe_probe() {
     return 0
 }
 
+bounded_command() {
+    local seconds="$1"
+    shift
+    if command -v timeout >/dev/null 2>&1; then
+        timeout "$seconds" "$@"
+    else
+        "$@"
+    fi
+}
+
 toml_escape() {
     local value="${1:-$UNKNOWN}"
     value=${value//$'\r'/ }
@@ -176,8 +186,29 @@ doca_host_version_probe() {
     local version
     local version_file
 
+    if command -v doca-info >/dev/null 2>&1; then
+        version="$(bounded_command 10 doca-info 2>/dev/null | awk '
+            /^DOCA:/ {in_doca = 1; next}
+            in_doca && /^- / {
+                for (i = 1; i <= NF; i++) {
+                    if ($i ~ /^[0-9]+\.[0-9]+/) {
+                        print $i
+                        exit
+                    }
+                }
+            }
+            in_doca && /^[^ -]/ {exit}
+        ')"
+        if [ -n "$version" ]; then
+            printf '%s' "$version"
+            return 0
+        fi
+    fi
+
     if command -v dpkg-query >/dev/null 2>&1; then
-        for package in doca-host doca-all doca-networking doca-ofed doca-roce doca-host-basic doca-extra; do
+        for package in \
+            doca-host doca-all doca-networking doca-ofed doca-roce doca-host-basic \
+            doca-runtime doca-sdk doca-tools doca-extra doca-cx-runtime doca-cx-sdk doca-cx-tools; do
             version="$(dpkg-query -W -f='${Version}' "$package" 2>/dev/null)"
             if [ -n "$version" ]; then
                 printf '%s' "$version"
@@ -187,7 +218,9 @@ doca_host_version_probe() {
     fi
 
     if command -v rpm >/dev/null 2>&1; then
-        for package in doca-host doca-all doca-networking doca-ofed doca-roce doca-host-basic doca-extra; do
+        for package in \
+            doca-host doca-all doca-networking doca-ofed doca-roce doca-host-basic \
+            doca-runtime doca-sdk doca-tools doca-extra doca-cx-runtime doca-cx-sdk doca-cx-tools; do
             version="$(rpm -q --qf '%{VERSION}-%{RELEASE}' "$package" 2>/dev/null)"
             if [ -n "$version" ]; then
                 printf '%s' "$version"
@@ -225,8 +258,85 @@ ofed_version_probe() {
 }
 
 libfabric_version_probe() {
-    command -v fi_info >/dev/null 2>&1 || return 1
-    fi_info --version | awk 'tolower($0) ~ /libfabric/ {print $2; exit}'
+    local version
+
+    if command -v fi_info >/dev/null 2>&1; then
+        version="$(bounded_command 10 fi_info --version 2>/dev/null | awk '
+            tolower($0) ~ /libfabric|fi_info/ {
+                for (i = 1; i <= NF; i++) {
+                    if ($i ~ /^[0-9]+\.[0-9]+/) {
+                        print $i
+                        exit
+                    }
+                }
+            }
+        ')"
+        [ -z "$version" ] || { printf '%s' "$version"; return 0; }
+    fi
+
+    if command -v pkg-config >/dev/null 2>&1; then
+        version="$(pkg-config --modversion libfabric 2>/dev/null)"
+        [ -z "$version" ] || { printf '%s' "$version"; return 0; }
+    fi
+
+    if command -v dpkg-query >/dev/null 2>&1; then
+        for package in libfabric1 libfabric-dev; do
+            version="$(dpkg-query -W -f='${Version}' "$package" 2>/dev/null)"
+            [ -z "$version" ] || { printf '%s' "$version"; return 0; }
+        done
+    fi
+
+    if command -v rpm >/dev/null 2>&1; then
+        version="$(rpm -q --qf '%{VERSION}-%{RELEASE}' libfabric 2>/dev/null)"
+        [ -z "$version" ] || { printf '%s' "$version"; return 0; }
+    fi
+
+    return 1
+}
+
+lldp_field_probe() {
+    local field="$1"
+    local output
+
+    if command -v lldpctl >/dev/null 2>&1; then
+        output="$(lldpctl -f keyvalue 2>/dev/null)"
+    elif command -v lldpcli >/dev/null 2>&1; then
+        output="$(lldpcli show neighbors -f keyvalue 2>/dev/null)"
+    else
+        return 1
+    fi
+
+    printf '%s\n' "$output" | awk -F= -v field="$field" '
+        index($1, field) {print $2}
+    ' | inventory_from_lines
+}
+
+switch_type_probe() {
+    local value
+
+    value="$(lldp_field_probe '.chassis.descr')"
+    [ -z "$value" ] || { printf '%s' "$value"; return 0; }
+
+    if command -v ibswitches >/dev/null 2>&1; then
+        value="$(bounded_command 10 ibswitches 2>/dev/null | awk -F'"' 'NF >= 2 {print $2}' | inventory_from_lines)"
+        [ -z "$value" ] || { printf '%s' "$value"; return 0; }
+    fi
+
+    return 1
+}
+
+network_name_probe() {
+    local value
+
+    value="$(lldp_field_probe '.chassis.name')"
+    [ -z "$value" ] || { printf '%s' "$value"; return 0; }
+
+    if command -v fi_info >/dev/null 2>&1; then
+        value="$(bounded_command 10 fi_info 2>/dev/null | awk -F': ' '$1 ~ /^[[:space:]]*fabric$/ {print $2}' | inventory_from_lines)"
+        [ -z "$value" ] || { printf '%s' "$value"; return 0; }
+    fi
+
+    return 1
 }
 
 os_release_file="${CLOUDAI_OS_RELEASE_FILE:-/etc/os-release}"
@@ -256,57 +366,62 @@ nic_count="$(printf '%s\n' "$nic_lines" | nonempty_line_count 2>/dev/null)" || n
 nic_inventory="$(printf '%s\n' "$nic_models" | inventory_from_lines 2>/dev/null)"
 nic_inventory="${nic_inventory:-$UNKNOWN}"
 
-mode="${1:-runtime}"
-if [ "$mode" = "host" ]; then
-    printf '[host]\n'
+emit_system_metadata() {
+    emit_string os_type "${ID:-$UNKNOWN}"
+    emit_string os_version "${VERSION:-${VERSION_ID:-$UNKNOWN}}"
+    emit_string linux_kernel_version "$kernel_version"
+    emit_string gpu_arch_type "$gpu_arch_type"
+    emit_integer gpu_count "$gpu_count"
+    emit_string gpu_inventory "$gpu_inventory"
+    emit_string cpu_model_name "$cpu_model"
+    emit_string cpu_arch_type "$cpu_arch"
+    emit_string cpu_vendor "$cpu_vendor"
+}
+
+emit_physical_network_metadata() {
+    emit_string nics "$nics"
+    emit_integer nic_count "$nic_count"
+    emit_string nic_inventory "$nic_inventory"
+    emit_string hca_firmware_versions "$(safe_probe hca_firmware_probe)"
+    emit_string switch_type "${SWITCH:-$(safe_probe switch_type_probe)}"
+    emit_string network_name "${NETWORK:-$(safe_probe network_name_probe)}"
+    emit_string mofed_version "$(safe_probe ofed_version_probe)"
+    emit_string doca_host_version "$(safe_probe doca_host_version_probe)"
+}
+
+mode="${1:-all}"
+if [ "$mode" != "host" ]; then
     emit_string user "$user"
-    table_prefix="host."
-else
-    emit_string user "$user"
-    table_prefix=""
 fi
 
-printf '\n[%ssystem]\n' "$table_prefix"
-emit_string os_type "${ID:-$UNKNOWN}"
-emit_string os_version "${VERSION:-${VERSION_ID:-$UNKNOWN}}"
-emit_string linux_kernel_version "$kernel_version"
-emit_string gpu_arch_type "$gpu_arch_type"
-emit_integer gpu_count "$gpu_count"
-emit_string gpu_inventory "$gpu_inventory"
-emit_string cpu_model_name "$cpu_model"
-emit_string cpu_arch_type "$cpu_arch"
-emit_string cpu_vendor "$cpu_vendor"
+if [ "$mode" = "all" ]; then
+    printf '\n[system]\n'
+    emit_system_metadata
 
-printf '\n[%smpi]\n' "$table_prefix"
-emit_string mpi_type "$(safe_probe mpi_type_probe)"
-emit_string mpi_version "$(safe_probe mpi_version_probe)"
-hpcx_version=${HPCX_DIR##*/}
-emit_string hpcx_version "${hpcx_version:-$UNKNOWN}"
-
-printf '\n[%scuda]\n' "$table_prefix"
-emit_string cuda_build_version "${CUDA_BUILD_VERSION:-$UNKNOWN}"
-emit_string cuda_runtime_version "$(safe_probe driver_cuda_compat_probe)"
-driver_version="$(safe_probe gpu_driver_probe)"
-emit_string cuda_driver_version "$driver_version"
-emit_string nvidia_driver_version "$driver_version"
-emit_string cuda_toolkit_version "$(safe_probe cuda_toolkit_version_probe)"
-
-printf '\n[%snetwork]\n' "$table_prefix"
-emit_string nics "$nics"
-emit_integer nic_count "$nic_count"
-emit_string nic_inventory "$nic_inventory"
-emit_string hca_firmware_versions "$(safe_probe hca_firmware_probe)"
-emit_string switch_type "${SWITCH:-$UNKNOWN}"
-emit_string network_name "${NETWORK:-$UNKNOWN}"
-emit_string mofed_version "$(safe_probe ofed_version_probe)"
-emit_string doca_host_version "$(safe_probe doca_host_version_probe)"
-emit_string libfabric_version "$(safe_probe libfabric_version_probe)"
-
-printf '\n[%snccl]\n' "$table_prefix"
-emit_string version "${NCCL_VERSION:-$UNKNOWN}"
-emit_string commit_sha "${NCCL_COMMIT_SHA:-$UNKNOWN}"
+    printf '\n[network]\n'
+    emit_physical_network_metadata
+    emit_string libfabric_version "$(safe_probe libfabric_version_probe)"
+fi
 
 if [ "$mode" != "host" ]; then
+    printf '\n[mpi]\n'
+    emit_string mpi_type "$(safe_probe mpi_type_probe)"
+    emit_string mpi_version "$(safe_probe mpi_version_probe)"
+    hpcx_version=${HPCX_DIR##*/}
+    emit_string hpcx_version "${hpcx_version:-$UNKNOWN}"
+
+    printf '\n[cuda]\n'
+    emit_string cuda_build_version "${CUDA_BUILD_VERSION:-$UNKNOWN}"
+    emit_string cuda_runtime_version "$(safe_probe driver_cuda_compat_probe)"
+    driver_version="$(safe_probe gpu_driver_probe)"
+    emit_string cuda_driver_version "$driver_version"
+    emit_string nvidia_driver_version "$driver_version"
+    emit_string cuda_toolkit_version "$(safe_probe cuda_toolkit_version_probe)"
+
+    printf '\n[nccl]\n'
+    emit_string version "${NCCL_VERSION:-$UNKNOWN}"
+    emit_string commit_sha "${NCCL_COMMIT_SHA:-$UNKNOWN}"
+
     printf '\n[slurm]\n'
     emit_string cluster_name "${SLURM_CLUSTER_NAME:-$UNKNOWN}"
     emit_string node_list "${SLURM_NODELIST:-$UNKNOWN}"
@@ -314,6 +429,19 @@ if [ "$mode" != "host" ]; then
     emit_string ntasks_per_node "${SLURM_NTASKS_PER_NODE:-$UNKNOWN}"
     emit_string ntasks "${SLURM_NTASKS:-$UNKNOWN}"
     emit_string job_id "${SLURM_JOBID:-$UNKNOWN}"
+
+    if [ "$mode" = "runtime" ]; then
+        printf '\n[network]\n'
+        emit_string libfabric_version "$(safe_probe libfabric_version_probe)"
+    fi
+else
+    # The runtime collector leaves [network] open so the host can append the
+    # physical fabric fields without declaring the TOML table a second time.
+    printf '\n'
+    emit_physical_network_metadata
+
+    printf '\n[system]\n'
+    emit_system_metadata
 fi
 
 exit 0

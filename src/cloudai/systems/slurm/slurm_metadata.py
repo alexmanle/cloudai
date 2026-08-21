@@ -151,17 +151,6 @@ class MetadataSlurm(BaseModel):
     job_id: str
 
 
-class MetadataHost(BaseModel):
-    """Represents metadata collected directly from the Slurm host."""
-
-    user: str
-    system: MetadataSystem
-    mpi: MetadataMPI
-    cuda: MetadataCUDA
-    network: MetadataNetwork
-    nccl: MetadataNCCL
-
-
 class SlurmSystemMetadata(BaseModel):
     """Represents the Slurm system metadata."""
 
@@ -172,4 +161,3 @@ class SlurmSystemMetadata(BaseModel):
     network: MetadataNetwork
     nccl: MetadataNCCL
     slurm: MetadataSlurm
-    host: MetadataHost | None = None
