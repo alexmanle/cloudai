@@ -19,7 +19,9 @@ ofed_version() {
 
 libfabric_version() {
     command -v fi_info >/dev/null || { echo null; return; }
-    fi_info --version 2>/dev/null | awk 'tolower($0) ~ /libfabric/ { print $2; exit }' | first_or_null
+    fi_info --version 2>/dev/null |
+        awk '{ for (i = 1; i <= NF; i++) if ($i ~ /^[0-9]+([.][0-9]+)+/) { print $i; exit } }' |
+        first_or_null
 }
 
 cuda_toolkit_version() {
