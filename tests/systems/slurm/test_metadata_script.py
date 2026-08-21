@@ -20,7 +20,9 @@ def _write_command(bin_dir: Path, name: str, body: str) -> None:
     command.chmod(0o755)
 
 
-def _run_collector(tmp_path: Path, commands: dict[str, str], mode: str = "all") -> subprocess.CompletedProcess[str]:
+def _run_collector(
+    tmp_path: Path, commands: dict[str, str], mode: str = "all", extra_env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     for name, body in commands.items():
@@ -31,7 +33,6 @@ def _run_collector(tmp_path: Path, commands: dict[str, str], mode: str = "all") 
     infiniband_sysfs = tmp_path / "infiniband" / "mlx5_0"
     infiniband_sysfs.mkdir(parents=True)
     (infiniband_sysfs / "fw_ver").write_text("28.43.2026\n")
-
     env = {
         "PATH": f"{bin_dir}:{os.environ['PATH']}",
         "USER": 'metadata"user',
@@ -41,6 +42,7 @@ def _run_collector(tmp_path: Path, commands: dict[str, str], mode: str = "all") 
         "CLOUDAI_DOCA_ROOT": str(tmp_path / "missing-doca"),
         "SLURM_JOBID": "12345",
     }
+    env.update(extra_env or {})
     return subprocess.run(
         ["/bin/bash", str(METADATA_SCRIPT), mode], env=env, text=True, capture_output=True, check=False
     )
@@ -72,12 +74,9 @@ EOF""",
 esac""",
             "ofed_info": "printf 'MLNX_OFED_LINUX-24.10-1.1.4.0:\\n'",
             "fi_info": "printf 'libfabric: 1.22.0\\n'",
-            "lldpctl": """cat <<'EOF'
-lldp.eth0.chassis.name=eos-leaf-01
-lldp.eth0.chassis.descr=NVIDIA Spectrum-4
-EOF""",
             "mpirun": "printf 'mpirun (Open MPI) 4.1.7a1\\n'",
         },
+        extra_env={"SWITCH": "Quantum-2", "NETWORK": "compute-fabric"},
     )
 
     assert result.returncode == 0
@@ -108,8 +107,8 @@ EOF""",
         "nic_count": 2,
         "nic_inventory": "Mellanox Technologies MT2910 Family [ConnectX-7] [15b3:1021] x2",
         "hca_firmware_versions": "mlx5_0=28.43.2026",
-        "switch_type": "NVIDIA Spectrum-4 x1",
-        "network_name": "eos-leaf-01 x1",
+        "switch_type": "Quantum-2",
+        "network_name": "compute-fabric",
         "mofed_version": "MLNX_OFED_LINUX-24.10-1.1.4.0",
         "doca_host_version": "2.9.2-0.1.0",
         "libfabric_version": "1.22.0",
@@ -130,6 +129,8 @@ def test_missing_subcommands_do_not_fail_or_corrupt_output(tmp_path: Path) -> No
     assert metadata["cuda"]["cuda_toolkit_version"] == "null"
     assert metadata["cuda"]["nvidia_driver_version"] == "null"
     assert metadata["network"]["nic_count"] == 0
+    assert metadata["network"]["switch_type"] == "null"
+    assert metadata["network"]["network_name"] == "null"
     assert metadata["network"]["doca_host_version"] == "null"
 
 

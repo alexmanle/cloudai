@@ -182,12 +182,16 @@ hca_firmware_probe() {
 
 doca_host_version_probe() {
     local doca_root="${CLOUDAI_DOCA_ROOT:-/opt/mellanox/doca}"
+    local doca_info="$doca_root/tools/doca-info"
     local package
     local version
     local version_file
 
     if command -v doca-info >/dev/null 2>&1; then
-        version="$(bounded_command 10 doca-info 2>/dev/null | awk '
+        doca_info="$(command -v doca-info)"
+    fi
+    if [ -x "$doca_info" ]; then
+        version="$(bounded_command 10 "$doca_info" 2>/dev/null | awk '
             /^DOCA:/ {in_doca = 1; next}
             in_doca && /^- / {
                 for (i = 1; i <= NF; i++) {
@@ -294,51 +298,6 @@ libfabric_version_probe() {
     return 1
 }
 
-lldp_field_probe() {
-    local field="$1"
-    local output
-
-    if command -v lldpctl >/dev/null 2>&1; then
-        output="$(lldpctl -f keyvalue 2>/dev/null)"
-    elif command -v lldpcli >/dev/null 2>&1; then
-        output="$(lldpcli show neighbors -f keyvalue 2>/dev/null)"
-    else
-        return 1
-    fi
-
-    printf '%s\n' "$output" | awk -F= -v field="$field" '
-        index($1, field) {print $2}
-    ' | inventory_from_lines
-}
-
-switch_type_probe() {
-    local value
-
-    value="$(lldp_field_probe '.chassis.descr')"
-    [ -z "$value" ] || { printf '%s' "$value"; return 0; }
-
-    if command -v ibswitches >/dev/null 2>&1; then
-        value="$(bounded_command 10 ibswitches 2>/dev/null | awk -F'"' 'NF >= 2 {print $2}' | inventory_from_lines)"
-        [ -z "$value" ] || { printf '%s' "$value"; return 0; }
-    fi
-
-    return 1
-}
-
-network_name_probe() {
-    local value
-
-    value="$(lldp_field_probe '.chassis.name')"
-    [ -z "$value" ] || { printf '%s' "$value"; return 0; }
-
-    if command -v fi_info >/dev/null 2>&1; then
-        value="$(bounded_command 10 fi_info 2>/dev/null | awk -F': ' '$1 ~ /^[[:space:]]*fabric$/ {print $2}' | inventory_from_lines)"
-        [ -z "$value" ] || { printf '%s' "$value"; return 0; }
-    fi
-
-    return 1
-}
-
 os_release_file="${CLOUDAI_OS_RELEASE_FILE:-/etc/os-release}"
 if [ -r "$os_release_file" ]; then
     # shellcheck disable=SC1090
@@ -383,8 +342,10 @@ emit_physical_network_metadata() {
     emit_integer nic_count "$nic_count"
     emit_string nic_inventory "$nic_inventory"
     emit_string hca_firmware_versions "$(safe_probe hca_firmware_probe)"
-    emit_string switch_type "${SWITCH:-$(safe_probe switch_type_probe)}"
-    emit_string network_name "${NETWORK:-$(safe_probe network_name_probe)}"
+    # These are deployment topology labels, not facts a compute node can infer
+    # reliably. Preserve the original explicit configuration contract.
+    emit_string switch_type "${SWITCH:-$UNKNOWN}"
+    emit_string network_name "${NETWORK:-$UNKNOWN}"
     emit_string mofed_version "$(safe_probe ofed_version_probe)"
     emit_string doca_host_version "$(safe_probe doca_host_version_probe)"
 }
