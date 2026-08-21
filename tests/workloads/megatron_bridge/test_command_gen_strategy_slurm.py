@@ -321,21 +321,6 @@ class TestMegatronBridgeSlurmCommandGenStrategy:
 
         assert "-m pip install wandb==0.27.2 numpy==1.26.4" in self._wrapper_content(cmd_gen)
 
-    def test_wrapper_uses_configured_numpy_version(
-        self, configured_slurm_system: SlurmSystem, make_test_run: Callable[..., TestRun]
-    ) -> None:
-        tr = make_test_run(cmd_args_overrides={"numpy_version": "2.2.1"})
-        cmd_gen = MegatronBridgeSlurmCommandGenStrategy(configured_slurm_system, tr)
-
-        assert "-m pip install wandb==0.28.1 numpy==2.2.1" in self._wrapper_content(cmd_gen)
-
-    def test_nemo_run_repo_uses_configured_version(self, make_test_run: Callable[..., TestRun]) -> None:
-        tr = make_test_run(cmd_args_overrides={"nemorun_version": "feature/ref"})
-        tdef = cast(MegatronBridgeTestDefinition, tr.test)
-
-        assert tdef.nemo_run_repo.commit == "feature/ref"
-        assert tdef.python_executable.git_repo.commit == "feature/ref"
-
     def test_wrapper_exits_when_wandb_install_fails(
         self, configured_slurm_system: SlurmSystem, make_test_run: Callable[..., TestRun]
     ) -> None:

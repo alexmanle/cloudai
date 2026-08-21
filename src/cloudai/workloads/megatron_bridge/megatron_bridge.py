@@ -68,7 +68,7 @@ class MegatronBridgeCmdArgs(CmdArgs):
     wandb_version: str = Field(default="0.28.1", description="W&B version installed in the launcher environment.")
     numpy_version: str = Field(default="1.26.4", description="NumPy version installed in the launcher environment.")
     nemorun_version: str = Field(
-        default="v0.8.0",
+        default="v0.10.0",
         description="NeMo Run Git commit, tag, or branch used by the launcher environment.",
     )
 

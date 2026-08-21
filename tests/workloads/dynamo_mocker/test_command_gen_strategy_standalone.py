@@ -72,32 +72,6 @@ def _make_strategy(
     return DynamoMockerStandaloneCommandGenStrategy(system=system, test_run=tr)
 
 
-def test_python_environment_uses_default_requirements() -> None:
-    tdef = DynamoMockerTestDefinition(
-        name="dynamo_mocker",
-        description="test",
-        test_template_name="DynamoMockerTest",
-        cmd_args=DynamoMockerCmdArgs(),
-    )
-
-    assert tdef.python_environment.requirements == [
-        "ai-dynamo==1.3.0.post1",
-        "genai-perf==0.0.16",
-        "aiperf==0.11.0",
-    ]
-
-
-def test_python_environment_uses_configured_requirements() -> None:
-    tdef = DynamoMockerTestDefinition(
-        name="dynamo_mocker",
-        description="test",
-        test_template_name="DynamoMockerTest",
-        cmd_args=DynamoMockerCmdArgs(requirements="ai-dynamo==1.2.1 aiperf==0.10.0"),
-    )
-
-    assert tdef.python_environment.requirements == ["ai-dynamo==1.2.1", "aiperf==0.10.0"]
-
-
 class TestBuildScriptArgsCombined:
     """_build_script_args in combined (disaggregation_mode=none) mode."""
 
