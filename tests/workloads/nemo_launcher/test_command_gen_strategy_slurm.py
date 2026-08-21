@@ -31,6 +31,17 @@ from cloudai.workloads.nemo_launcher import (
 
 
 class TestNeMoLauncherSlurmCommandGenStrategy:
+    def test_launcher_repo_uses_configured_version(self) -> None:
+        tdef = NeMoLauncherTestDefinition(
+            name="t1",
+            description="desc1",
+            test_template_name="tt",
+            cmd_args=NeMoLauncherCmdArgs(launcher_version="release-branch"),
+        )
+
+        assert tdef.launcher_repo.commit == "release-branch"
+        assert tdef.python_executable.git_repo.commit == "release-branch"
+
     @pytest.fixture
     def test_run(self, tmp_path: Path) -> TestRun:
         tdef = NeMoLauncherTestDefinition(

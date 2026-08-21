@@ -94,6 +94,10 @@ class Training(BaseModel):
 class NeMoLauncherCmdArgs(CmdArgs):
     """NeMoLauncher test command arguments."""
 
+    launcher_version: str = Field(
+        default="599ecfcbbd64fd2de02f2cc093b1610d73854022",
+        description="NeMo Framework Launcher Git commit, tag, or branch.",
+    )
     launcher_script: str = "launcher_scripts/main.py"
     docker_image_url: str = "nvcr.io/nvidia/nemo:24.12.01"
     stages: str = '["training"]'
@@ -106,11 +110,20 @@ class NeMoLauncherTestDefinition(TestDefinition):
     """Test object for NeMoLauncher."""
 
     cmd_args: NeMoLauncherCmdArgs
-    launcher_repo: GitRepo = GitRepo(
-        url="https://github.com/NVIDIA/NeMo-Framework-Launcher.git", commit="599ecfcbbd64fd2de02f2cc093b1610d73854022"
-    )
     _docker_image: Optional[DockerImage] = None
     _python_executable: Optional[PythonExecutable] = None
+    _launcher_repo: Optional[GitRepo] = None
+
+    @property
+    def launcher_repo(self) -> GitRepo:
+        """Return the launcher repository selected by ``cmd_args.launcher_version``."""
+        version = self.cmd_args.launcher_version
+        if self._launcher_repo is None or self._launcher_repo.commit != version:
+            self._launcher_repo = GitRepo(
+                url="https://github.com/NVIDIA/NeMo-Framework-Launcher.git",
+                commit=version,
+            )
+        return self._launcher_repo
 
     @property
     def docker_image(self) -> DockerImage:
@@ -120,10 +133,9 @@ class NeMoLauncherTestDefinition(TestDefinition):
 
     @property
     def python_executable(self) -> PythonExecutable:
-        if not self._python_executable:
-            self._python_executable = PythonExecutable(
-                GitRepo(url=self.launcher_repo.url, commit=self.launcher_repo.commit)
-            )
+        launcher_repo = self.launcher_repo
+        if not self._python_executable or self._python_executable.git_repo != launcher_repo:
+            self._python_executable = PythonExecutable(launcher_repo)
         return self._python_executable
 
     @property

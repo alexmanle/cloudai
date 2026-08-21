@@ -47,6 +47,7 @@ class NeMoLauncherSlurmCommandGenStrategy(SlurmCommandGenStrategy):
 
         self.final_cmd_args["container"] = str(tdef.docker_image.installed_path)
         self.final_cmd_args.pop("docker_image_url", None)
+        self.final_cmd_args.pop("launcher_version", None)
 
         if self.job_prefix is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

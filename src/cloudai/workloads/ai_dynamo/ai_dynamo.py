@@ -394,6 +394,10 @@ class AIDynamoCmdArgs(CmdArgs):
 
     model_config = ConfigDict(extra="forbid")
 
+    dynamo_version: str = Field(
+        default="f7e468c7e8ff0d1426db987564e60572167e8464",
+        description="AI Dynamo Git commit, tag, or branch.",
+    )
     docker_image_url: str
     startup_cmd: str | None = None
     startup_cmd_docker_image: str | None = None
@@ -457,9 +461,7 @@ class AIDynamoTestDefinition(TestDefinition):
     _dcgm_exporter_image: Optional[DockerImage] = None
     _startup_cmd_docker_image: DockerImage | None = None
     script: File = File(Path(__file__).parent.parent / "ai_dynamo/ai_dynamo.sh")
-    repo: GitRepo = GitRepo(
-        url="https://github.com/ai-dynamo/dynamo.git", commit="f7e468c7e8ff0d1426db987564e60572167e8464"
-    )
+    _repo: GitRepo | None = None
     _hf_model: HFModel | None = None
     constraints: Constraints = Constraints()
 
@@ -482,6 +484,14 @@ class AIDynamoTestDefinition(TestDefinition):
             self.cmd_args.genai_perf.script.src.name: self.cmd_args.genai_perf,
             self.cmd_args.aiperf.script.src.name: self.cmd_args.aiperf,
         }
+
+    @property
+    def repo(self) -> GitRepo:
+        """Return the AI Dynamo repository selected by ``cmd_args.dynamo_version``."""
+        version = self.cmd_args.dynamo_version
+        if self._repo is None or self._repo.commit != version:
+            self._repo = GitRepo(url="https://github.com/ai-dynamo/dynamo.git", commit=version)
+        return self._repo
 
     @property
     def docker_image(self) -> DockerImage:

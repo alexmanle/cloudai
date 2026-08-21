@@ -135,6 +135,24 @@ def test_installables_include_aiconfigurator_python_environment():
     assert tdef.python_environment.requirements == ["aiconfigurator~=0.5.0"]
 
 
+def test_python_environment_uses_configured_requirements() -> None:
+    tdef = AiconfiguratorTestDefinition(
+        name="aiconfig",
+        description="desc",
+        test_template_name="Aiconfigurator",
+        cmd_args=AiconfiguratorCmdArgs(
+            requirements="aiconfigurator==0.5.4",
+            model_name="LLAMA3.1_70B",
+            system="h200_sxm",
+            isl=4000,
+            osl=500,
+            agg=Agg(batch_size=8, ctx_tokens=16),
+        ),
+    )
+
+    assert tdef.python_environment.requirements == ["aiconfigurator==0.5.4"]
+
+
 def test_cmd_args_requires_exactly_one_mode() -> None:
     with pytest.raises(ValueError):
         AiconfiguratorCmdArgs(

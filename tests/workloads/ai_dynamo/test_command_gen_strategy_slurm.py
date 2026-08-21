@@ -105,12 +105,8 @@ def test_run(tmp_path: Path, cmd_args: AIDynamoCmdArgs) -> TestRun:
         description="desc",
         test_template_name="template",
         cmd_args=cmd_args,
-        repo=GitRepo(
-            url="https://github.com/ai-dynamo/dynamo.git",
-            commit="f7e468c7e8ff0d1426db987564e60572167e8464",
-            installed_path=dynamo_repo_path,
-        ),
     )
+    tdef.repo.installed_path = dynamo_repo_path
 
     return TestRun(name="run", test=tdef, nodes=["n0", "n1"], num_nodes=2, output_path=tmp_path)
 
@@ -143,6 +139,18 @@ def test_installables_include_top_level_git_repos(cmd_args: AIDynamoCmdArgs) -> 
     )
 
     assert repo in tdef.installables
+
+
+def test_repo_uses_configured_dynamo_version(cmd_args: AIDynamoCmdArgs) -> None:
+    cmd_args.dynamo_version = "release-branch"
+    tdef = AIDynamoTestDefinition(
+        name="test",
+        description="desc",
+        test_template_name="template",
+        cmd_args=cmd_args,
+    )
+
+    assert tdef.repo.commit == "release-branch"
 
 
 def test_startup_cmd_image_is_installable(cmd_args: AIDynamoCmdArgs) -> None:
@@ -435,13 +443,14 @@ def test_dcgm_exporter_adds_configured_docker_image_installable(cmd_args: AIDyna
 def test_shared_node_disagg_preserves_explicit_smaller_node_count(
     slurm_system: SlurmSystem, tmp_path: Path, cmd_args: AIDynamoCmdArgs
 ) -> None:
+    cmd_args.dynamo_version = "main"
     tdef = AIDynamoTestDefinition(
         name="test",
         description="desc",
         test_template_name="template",
         cmd_args=cmd_args,
-        repo=GitRepo(url="https://github.com/ai-dynamo/dynamo.git", commit="main", installed_path=tmp_path),
     )
+    tdef.repo.installed_path = tmp_path
     tr = TestRun(
         name="run",
         test=tdef,
@@ -474,13 +483,14 @@ def test_explicit_overlapping_worker_nodes_are_allowed_for_shared_node(
 ) -> None:
     cmd_args.dynamo.prefill_worker.nodes = "n0"
     cmd_args.dynamo.decode_worker.nodes = "n0"
+    cmd_args.dynamo_version = "main"
     tdef = AIDynamoTestDefinition(
         name="test",
         description="desc",
         test_template_name="template",
         cmd_args=cmd_args,
-        repo=GitRepo(url="https://github.com/ai-dynamo/dynamo.git", commit="main", installed_path=tmp_path),
     )
+    tdef.repo.installed_path = tmp_path
     tr = TestRun(name="run", test=tdef, nodes=[], num_nodes=1, output_path=tmp_path)
     strategy = AIDynamoSlurmCommandGenStrategy(slurm_system, tr)
 
@@ -495,13 +505,14 @@ def test_explicit_overlapping_worker_nodes_reject_extra_allocated_nodes(
 ) -> None:
     cmd_args.dynamo.prefill_worker.nodes = "n0"
     cmd_args.dynamo.decode_worker.nodes = "n0"
+    cmd_args.dynamo_version = "main"
     tdef = AIDynamoTestDefinition(
         name="test",
         description="desc",
         test_template_name="template",
         cmd_args=cmd_args,
-        repo=GitRepo(url="https://github.com/ai-dynamo/dynamo.git", commit="main", installed_path=tmp_path),
     )
+    tdef.repo.installed_path = tmp_path
     tr = TestRun(
         name="run",
         test=tdef,
@@ -565,6 +576,7 @@ def test_aiperf_phase_roundtrip_does_not_emit_default_report_name(strategy: AIDy
     ]
 
     roundtripped = AIDynamoTestDefinition.model_validate(td.model_dump())
+    roundtripped.repo.installed_path = td.repo.installed_path
     strategy.test_run.test = roundtripped
 
     assert roundtripped.cmd_args.aiperf_phases is not None
