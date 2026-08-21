@@ -43,6 +43,29 @@ from cloudai.workloads.ai_dynamo import (
 )
 
 
+def test_worker_config_allows_omitting_launch_fields_when_num_nodes_is_zero() -> None:
+    worker = WorkerConfig.model_validate({"num-nodes": 0})
+
+    assert worker.num_nodes == 0
+    assert worker.cmd is None
+    assert worker.worker_initialized_regex is None
+
+
+@pytest.mark.parametrize("num_nodes", [1, [0, 1]])
+def test_worker_config_requires_launch_fields_when_any_num_nodes_is_nonzero(num_nodes: int | list[int]) -> None:
+    with pytest.raises(ValueError, match="cmd, worker-initialized-regex must be set when num-nodes is non-zero"):
+        WorkerConfig.model_validate({"num-nodes": num_nodes})
+
+
+def test_ai_dynamo_args_accepts_disabled_prefill_worker_without_launch_fields() -> None:
+    args = AIDynamoArgs.model_validate({"prefill_worker": {"num-nodes": 0}})
+
+    assert args.prefill_worker.num_nodes == 0
+    assert args.prefill_worker.cmd is None
+    assert args.prefill_worker.worker_initialized_regex is None
+    assert args.decode_worker.cmd == "python3 -m dynamo.vllm"
+
+
 @pytest.fixture
 def cmd_args() -> AIDynamoCmdArgs:
     return AIDynamoCmdArgs(
@@ -118,6 +141,19 @@ def test_run(tmp_path: Path, cmd_args: AIDynamoCmdArgs) -> TestRun:
 @pytest.fixture
 def strategy(slurm_system: SlurmSystem, test_run: TestRun) -> AIDynamoSlurmCommandGenStrategy:
     return AIDynamoSlurmCommandGenStrategy(slurm_system, test_run)
+
+
+def test_gen_script_args_omits_launch_fields_for_disabled_prefill_worker(
+    strategy: AIDynamoSlurmCommandGenStrategy,
+) -> None:
+    td = cast(AIDynamoTestDefinition, strategy.test_run.test)
+    td.cmd_args.dynamo.prefill_worker = WorkerConfig(num_nodes=0)
+
+    args = strategy._gen_script_args(td)
+
+    assert '--prefill-num-nodes "0"' in args
+    assert not any(arg.startswith("--prefill-cmd ") for arg in args)
+    assert not any(arg.startswith("--prefill-worker-initialized-regex ") for arg in args)
 
 
 def test_container_mounts(strategy: AIDynamoSlurmCommandGenStrategy, test_run: TestRun) -> None:

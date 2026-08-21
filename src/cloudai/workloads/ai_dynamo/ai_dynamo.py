@@ -116,8 +116,9 @@ class WorkerConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    cmd: str
-    worker_initialized_regex: str = Field(
+    cmd: str | None = None
+    worker_initialized_regex: str | None = Field(
+        default=None,
         validation_alias=AliasChoices("worker-initialized-regex", "worker_initialized_regex"),
         serialization_alias="worker-initialized-regex",
     )
@@ -139,6 +140,28 @@ class WorkerConfig(BaseModel):
         serialization_alias="extra-args",
         validation_alias=AliasChoices("extra-args", "extra_args"),
     )
+
+    @property
+    def is_enabled(self) -> bool:
+        """Return whether any configured trial launches this worker."""
+        node_counts = self.num_nodes if isinstance(self.num_nodes, list) else [self.num_nodes]
+        return not node_counts or any(count != 0 for count in node_counts)
+
+    @model_validator(mode="after")
+    def validate_enabled_worker_fields(self) -> "WorkerConfig":
+        """Require launch fields unless every configured worker node count is zero."""
+        if not self.is_enabled:
+            return self
+
+        missing_fields = []
+        if not self.cmd:
+            missing_fields.append("cmd")
+        if not self.worker_initialized_regex:
+            missing_fields.append("worker-initialized-regex")
+        if missing_fields:
+            raise ValueError(f"{', '.join(missing_fields)} must be set when num-nodes is non-zero")
+
+        return self
 
 
 class DCGMExporter(BaseModel):
