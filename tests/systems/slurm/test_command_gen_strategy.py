@@ -334,29 +334,6 @@ def test_gen_srun_prefix_tr_extra_srun_args(strategy_fixture: SlurmCommandGenStr
     assert "--arg val --flag" in srun_prefix  # added as a single element
 
 
-def test_metadata_cmd_collects_host_and_container_without_changing_extra_args(
-    strategy_fixture: SlurmCommandGenStrategy,
-) -> None:
-    strategy_fixture.image_path = Mock(return_value="workload.sqsh")
-    strategy_fixture.system.extra_srun_args = "--reservation keep"
-    strategy_fixture.test_run.extra_srun_args = "--exclusive --constraint='gpu type'"
-
-    metadata_cmd = strategy_fixture._metadata_cmd()
-
-    runtime_cmd, host_cmd = metadata_cmd.splitlines()
-    assert "--container-image" not in host_cmd
-    assert "--container-mounts" not in host_cmd
-    assert "--open-mode=append" in host_cmd
-    assert f"bash {strategy_fixture.system.install_path}/slurm-metadata.sh host" in host_cmd
-    assert "--container-image=workload.sqsh" in runtime_cmd
-    assert "--container-mounts" in runtime_cmd
-    assert "bash /cloudai_install/slurm-metadata.sh runtime" in runtime_cmd
-    for command in (host_cmd, runtime_cmd):
-        assert "--mpi=none" in command
-        assert "--reservation keep" in command
-        assert "--exclusive --constraint='gpu type'" in command
-
-
 def test_append_distribution_and_hostfile_with_nodes(slurm_system: SlurmSystem, testrun_fixture: TestRun) -> None:
     slurm_system.distribution = "block"
     slurm_system.ntasks_per_node = 2

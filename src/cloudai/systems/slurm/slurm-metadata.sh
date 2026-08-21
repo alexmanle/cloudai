@@ -213,8 +213,7 @@ doca_host_version_probe() {
         for package in \
             doca-host doca-all doca-networking doca-ofed doca-roce doca-host-basic \
             doca-runtime doca-sdk doca-tools doca-extra doca-cx-runtime doca-cx-sdk doca-cx-tools; do
-            version="$(dpkg-query -W -f='${Version}' "$package" 2>/dev/null)"
-            if [ -n "$version" ]; then
+            if version="$(dpkg-query -W -f='${Version}' "$package" 2>/dev/null)" && [ -n "$version" ]; then
                 printf '%s' "$version"
                 return 0
             fi
@@ -225,8 +224,7 @@ doca_host_version_probe() {
         for package in \
             doca-host doca-all doca-networking doca-ofed doca-roce doca-host-basic \
             doca-runtime doca-sdk doca-tools doca-extra doca-cx-runtime doca-cx-sdk doca-cx-tools; do
-            version="$(rpm -q --qf '%{VERSION}-%{RELEASE}' "$package" 2>/dev/null)"
-            if [ -n "$version" ]; then
+            if version="$(rpm -q --qf '%{VERSION}-%{RELEASE}' "$package" 2>/dev/null)" && [ -n "$version" ]; then
                 printf '%s' "$version"
                 return 0
             fi
@@ -285,14 +283,18 @@ libfabric_version_probe() {
 
     if command -v dpkg-query >/dev/null 2>&1; then
         for package in libfabric1 libfabric-dev; do
-            version="$(dpkg-query -W -f='${Version}' "$package" 2>/dev/null)"
-            [ -z "$version" ] || { printf '%s' "$version"; return 0; }
+            if version="$(dpkg-query -W -f='${Version}' "$package" 2>/dev/null)" && [ -n "$version" ]; then
+                printf '%s' "$version"
+                return 0
+            fi
         done
     fi
 
     if command -v rpm >/dev/null 2>&1; then
-        version="$(rpm -q --qf '%{VERSION}-%{RELEASE}' libfabric 2>/dev/null)"
-        [ -z "$version" ] || { printf '%s' "$version"; return 0; }
+        if version="$(rpm -q --qf '%{VERSION}-%{RELEASE}' libfabric 2>/dev/null)" && [ -n "$version" ]; then
+            printf '%s' "$version"
+            return 0
+        fi
     fi
 
     return 1
