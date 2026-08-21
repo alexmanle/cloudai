@@ -7,7 +7,7 @@ set +u
 set +o pipefail 2>/dev/null || true
 export LC_ALL=C
 
-readonly UNKNOWN="unknown"
+readonly UNKNOWN="null"
 
 safe_probe() {
     local output
@@ -172,23 +172,28 @@ hca_firmware_probe() {
 
 doca_host_version_probe() {
     local doca_root="${CLOUDAI_DOCA_ROOT:-/opt/mellanox/doca}"
+    local package
     local version
     local version_file
 
     if command -v dpkg-query >/dev/null 2>&1; then
-        version="$(dpkg-query -W -f='${Version}' doca-host 2>/dev/null)"
-        if [ -n "$version" ]; then
-            printf '%s' "$version"
-            return 0
-        fi
+        for package in doca-host doca-all doca-networking doca-ofed doca-roce doca-host-basic doca-extra; do
+            version="$(dpkg-query -W -f='${Version}' "$package" 2>/dev/null)"
+            if [ -n "$version" ]; then
+                printf '%s' "$version"
+                return 0
+            fi
+        done
     fi
 
     if command -v rpm >/dev/null 2>&1; then
-        version="$(rpm -q --qf '%{VERSION}-%{RELEASE}' doca-host 2>/dev/null)"
-        if [ -n "$version" ]; then
-            printf '%s' "$version"
-            return 0
-        fi
+        for package in doca-host doca-all doca-networking doca-ofed doca-roce doca-host-basic doca-extra; do
+            version="$(rpm -q --qf '%{VERSION}-%{RELEASE}' "$package" 2>/dev/null)"
+            if [ -n "$version" ]; then
+                printf '%s' "$version"
+                return 0
+            fi
+        done
     fi
 
     for version_file in "$doca_root/version.json" "$doca_root/version.txt"; do
@@ -228,6 +233,22 @@ os_release_file="${CLOUDAI_OS_RELEASE_FILE:-/etc/os-release}"
 if [ -r "$os_release_file" ]; then
     # shellcheck disable=SC1090
     . "$os_release_file" 2>/dev/null || true
+fi
+
+if [ "${1:-host}" = "runtime" ]; then
+    printf '[runtime]\n'
+    emit_string os_type "${ID:-$UNKNOWN}"
+    emit_string os_version "${VERSION:-${VERSION_ID:-$UNKNOWN}}"
+    emit_string mpi_type "$(safe_probe mpi_type_probe)"
+    emit_string mpi_version "$(safe_probe mpi_version_probe)"
+    hpcx_version=${HPCX_DIR##*/}
+    emit_string hpcx_version "${hpcx_version:-$UNKNOWN}"
+    emit_string cuda_build_version "${CUDA_BUILD_VERSION:-$UNKNOWN}"
+    emit_string cuda_runtime_version "$(safe_probe driver_cuda_compat_probe)"
+    emit_string cuda_toolkit_version "$(safe_probe cuda_toolkit_version_probe)"
+    emit_string nccl_version "${NCCL_VERSION:-$UNKNOWN}"
+    emit_string nccl_commit_sha "${NCCL_COMMIT_SHA:-$UNKNOWN}"
+    exit 0
 fi
 
 user="${USER:-$(safe_probe whoami)}"

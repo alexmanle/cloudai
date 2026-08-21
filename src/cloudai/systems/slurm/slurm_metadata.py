@@ -95,10 +95,10 @@ class MetadataSystem(BaseModel):
     linux_kernel_version: str
     gpu_arch_type: str
     gpu_count: int = 0
-    gpu_inventory: str = "unknown"
+    gpu_inventory: str = "null"
     cpu_model_name: str
     cpu_arch_type: str
-    cpu_vendor: str = "unknown"
+    cpu_vendor: str = "null"
 
 
 class MetadataMPI(BaseModel):
@@ -115,8 +115,8 @@ class MetadataCUDA(BaseModel):
     cuda_build_version: str
     cuda_runtime_version: str
     cuda_driver_version: str
-    nvidia_driver_version: str = "unknown"
-    cuda_toolkit_version: str = "unknown"
+    nvidia_driver_version: str = "null"
+    cuda_toolkit_version: str = "null"
 
 
 class MetadataNetwork(BaseModel):
@@ -124,12 +124,12 @@ class MetadataNetwork(BaseModel):
 
     nics: str
     nic_count: int = 0
-    nic_inventory: str = "unknown"
-    hca_firmware_versions: str = "unknown"
+    nic_inventory: str = "null"
+    hca_firmware_versions: str = "null"
     switch_type: str
     network_name: str
     mofed_version: str
-    doca_host_version: str = "unknown"
+    doca_host_version: str = "null"
     libfabric_version: str
 
 
@@ -151,6 +151,21 @@ class MetadataSlurm(BaseModel):
     job_id: str
 
 
+class MetadataRuntime(BaseModel):
+    """Represents software metadata collected inside the workload container."""
+
+    os_type: str = "null"
+    os_version: str = "null"
+    mpi_type: str = "null"
+    mpi_version: str = "null"
+    hpcx_version: str = "null"
+    cuda_build_version: str = "null"
+    cuda_runtime_version: str = "null"
+    cuda_toolkit_version: str = "null"
+    nccl_version: str = "null"
+    nccl_commit_sha: str = "null"
+
+
 class SlurmSystemMetadata(BaseModel):
     """Represents the Slurm system metadata."""
 
@@ -161,3 +176,4 @@ class SlurmSystemMetadata(BaseModel):
     network: MetadataNetwork
     nccl: MetadataNCCL
     slurm: MetadataSlurm
+    runtime: MetadataRuntime = Field(default_factory=MetadataRuntime)

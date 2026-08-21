@@ -19,7 +19,7 @@ def _write_command(bin_dir: Path, name: str, body: str) -> None:
     command.chmod(0o755)
 
 
-def _run_collector(tmp_path: Path, commands: dict[str, str]) -> subprocess.CompletedProcess[str]:
+def _run_collector(tmp_path: Path, commands: dict[str, str], mode: str = "host") -> subprocess.CompletedProcess[str]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     for name, body in commands.items():
@@ -40,7 +40,9 @@ def _run_collector(tmp_path: Path, commands: dict[str, str]) -> subprocess.Compl
         "CLOUDAI_DOCA_ROOT": str(tmp_path / "missing-doca"),
         "SLURM_JOBID": "12345",
     }
-    return subprocess.run(["/bin/bash", str(METADATA_SCRIPT)], env=env, text=True, capture_output=True, check=False)
+    return subprocess.run(
+        ["/bin/bash", str(METADATA_SCRIPT), mode], env=env, text=True, capture_output=True, check=False
+    )
 
 
 def test_collects_requested_host_metadata(tmp_path: Path) -> None:
@@ -63,7 +65,10 @@ esac""",
 0000:31:00.0 Infiniband controller [0207]: Mellanox Technologies MT2910 Family [ConnectX-7] [15b3:1021]
 0000:65:00.0 VGA compatible controller [0300]: NVIDIA Corporation Device [10de:2330]
 EOF""",
-            "dpkg-query": "printf '2.9.2-0.1.0\\n'",
+            "dpkg-query": """case "$*" in
+    *doca-ofed) printf '2.9.2-0.1.0\\n' ;;
+    *) exit 1 ;;
+esac""",
             "ofed_info": "printf 'MLNX_OFED_LINUX-24.10-1.1.4.0:\\n'",
             "fi_info": "printf 'libfabric: 1.22.0\\n'",
             "mpirun": "printf 'mpirun (Open MPI) 4.1.7a1\\n'",
@@ -87,7 +92,7 @@ EOF""",
         "cpu_vendor": "GenuineIntel",
     }
     assert metadata["cuda"] == {
-        "cuda_build_version": "unknown",
+        "cuda_build_version": "null",
         "cuda_runtime_version": "12.8",
         "cuda_driver_version": "570.124.06",
         "nvidia_driver_version": "570.124.06",
@@ -98,8 +103,8 @@ EOF""",
         "nic_count": 2,
         "nic_inventory": "Mellanox Technologies MT2910 Family [ConnectX-7] [15b3:1021] x2",
         "hca_firmware_versions": "mlx5_0=28.43.2026",
-        "switch_type": "unknown",
-        "network_name": "unknown",
+        "switch_type": "null",
+        "network_name": "null",
         "mofed_version": "MLNX_OFED_LINUX-24.10-1.1.4.0",
         "doca_host_version": "2.9.2-0.1.0",
         "libfabric_version": "1.22.0",
@@ -116,8 +121,37 @@ def test_missing_subcommands_do_not_fail_or_corrupt_output(tmp_path: Path) -> No
     assert result.returncode == 0
     metadata = toml.loads(result.stdout)
     assert metadata["system"]["gpu_count"] == 0
-    assert metadata["system"]["gpu_arch_type"] == "unknown"
-    assert metadata["cuda"]["cuda_toolkit_version"] == "unknown"
-    assert metadata["cuda"]["nvidia_driver_version"] == "unknown"
+    assert metadata["system"]["gpu_arch_type"] == "null"
+    assert metadata["cuda"]["cuda_toolkit_version"] == "null"
+    assert metadata["cuda"]["nvidia_driver_version"] == "null"
     assert metadata["network"]["nic_count"] == 0
-    assert metadata["network"]["doca_host_version"] == "unknown"
+    assert metadata["network"]["doca_host_version"] == "null"
+
+
+def test_collects_container_metadata_as_runtime_table(tmp_path: Path) -> None:
+    result = _run_collector(
+        tmp_path,
+        {
+            "nvidia-smi": "printf 'NVIDIA-SMI CUDA Version: 13.1\\n'",
+            "nvcc": "printf 'Cuda compilation tools, release 13.0, V13.0.1\\n'",
+            "mpirun": "printf 'mpirun (Open MPI) 4.1.9a1\\n'",
+        },
+        mode="runtime",
+    )
+
+    assert result.returncode == 0
+    assert result.stderr == ""
+    assert toml.loads(result.stdout) == {
+        "runtime": {
+            "os_type": "ubuntu",
+            "os_version": "24.04 LTS",
+            "mpi_type": "openmpi",
+            "mpi_version": "4.1.9a1",
+            "hpcx_version": "null",
+            "cuda_build_version": "null",
+            "cuda_runtime_version": "13.1",
+            "cuda_toolkit_version": "13.0",
+            "nccl_version": "null",
+            "nccl_commit_sha": "null",
+        }
+    }

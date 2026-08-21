@@ -275,10 +275,15 @@ class TestAuxCommands:
             f"srun --export=ALL --mpi=none -N{nccl_tr.num_nodes} --ntasks=2 --ntasks-per-node=1 "
             f"--output={runner.scenario_root}/metadata/node-%N.toml "
             f"--error={runner.scenario_root}/metadata/nodes.err "
-            f"bash {runner.system.install_path}/slurm-metadata.sh"
+            f"bash {runner.system.install_path}/slurm-metadata.sh\n"
+            f"srun --export=ALL --mpi=none -N{nccl_tr.num_nodes} --ntasks=2 --ntasks-per-node=1 "
+            f"--output={runner.scenario_root}/metadata/node-%N.toml "
+            f"--error={runner.scenario_root}/metadata/nodes.err --open-mode=append "
+            f"--container-image={tdef.docker_image.installed_path} {mounts} --no-container-mount-home "
+            "bash /cloudai_install/slurm-metadata.sh runtime"
         )
         assert aux_cmds[0] == metadata_cmd
-        assert "--container-image" not in aux_cmds[0]
+        assert "--container-image" not in aux_cmds[0].splitlines()[0]
 
         ranks_mapping_cmd = (
             f"srun --export=ALL --mpi=pmix -N{nccl_tr.num_nodes} --container-image={tdef.docker_image.installed_path} "
@@ -364,11 +369,12 @@ class TestSbatch:
             p.replace(f"{runner.scenario_root.absolute()}", "SCENARIO_ROOT")
             for p in re.findall(r"--output=(\S+)", sbatch)
         ]
-        assert len(output_paths) == 4
+        assert len(output_paths) == 5
         assert output_paths[0] == "SCENARIO_ROOT/common.out"
         assert output_paths[1] == "SCENARIO_ROOT/metadata/node-%N.toml"
-        assert output_paths[2] == "SCENARIO_ROOT/mapping-stdout.txt"
-        assert output_paths[3] == f"SCENARIO_ROOT/{nccl_tr.name}/0/stdout.txt"
+        assert output_paths[2] == "SCENARIO_ROOT/metadata/node-%N.toml"
+        assert output_paths[3] == "SCENARIO_ROOT/mapping-stdout.txt"
+        assert output_paths[4] == f"SCENARIO_ROOT/{nccl_tr.name}/0/stdout.txt"
 
     def test_with_two_cases(self, slurm_system: SlurmSystem, nccl_tr: TestRun, sleep_tr: TestRun) -> None:
         nccl_tr.test.extra_env_vars["NCCL_VAR"] = "nccl_value"
@@ -408,7 +414,7 @@ class TestSbatch:
             p.replace(f"{runner.scenario_root.absolute()}", "SCENARIO_ROOT")
             for p in re.findall(r"--output=(\S+)", sbatch)
         ]
-        assert len(output_paths) == 5
+        assert len(output_paths) == 6
         assert output_paths[-2] != output_paths[-1]
 
     def test_dse(self, nccl_tr: TestRun, slurm_system: SlurmSystem) -> None:
