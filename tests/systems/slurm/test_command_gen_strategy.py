@@ -343,13 +343,13 @@ def test_metadata_cmd_collects_host_and_container_without_changing_extra_args(
 
     metadata_cmd = strategy_fixture._metadata_cmd()
 
-    host_cmd, runtime_cmd = metadata_cmd.splitlines()
+    runtime_cmd, host_cmd = metadata_cmd.splitlines()
     assert "--container-image" not in host_cmd
     assert "--container-mounts" not in host_cmd
-    assert f"bash {strategy_fixture.system.install_path}/slurm-metadata.sh" in host_cmd
+    assert "--open-mode=append" in host_cmd
+    assert f"bash {strategy_fixture.system.install_path}/slurm-metadata.sh host" in host_cmd
     assert "--container-image=workload.sqsh" in runtime_cmd
     assert "--container-mounts" in runtime_cmd
-    assert "--open-mode=append" in runtime_cmd
     assert "bash /cloudai_install/slurm-metadata.sh runtime" in runtime_cmd
     for command in (host_cmd, runtime_cmd):
         assert "--mpi=none" in command

@@ -275,15 +275,15 @@ class TestAuxCommands:
             f"srun --export=ALL --mpi=none -N{nccl_tr.num_nodes} --ntasks=2 --ntasks-per-node=1 "
             f"--output={runner.scenario_root}/metadata/node-%N.toml "
             f"--error={runner.scenario_root}/metadata/nodes.err "
-            f"bash {runner.system.install_path}/slurm-metadata.sh\n"
+            f"--container-image={tdef.docker_image.installed_path} {mounts} --no-container-mount-home "
+            "bash /cloudai_install/slurm-metadata.sh runtime\n"
             f"srun --export=ALL --mpi=none -N{nccl_tr.num_nodes} --ntasks=2 --ntasks-per-node=1 "
             f"--output={runner.scenario_root}/metadata/node-%N.toml "
             f"--error={runner.scenario_root}/metadata/nodes.err --open-mode=append "
-            f"--container-image={tdef.docker_image.installed_path} {mounts} --no-container-mount-home "
-            "bash /cloudai_install/slurm-metadata.sh runtime"
+            f"bash {runner.system.install_path}/slurm-metadata.sh host"
         )
         assert aux_cmds[0] == metadata_cmd
-        assert "--container-image" not in aux_cmds[0].splitlines()[0]
+        assert "--container-image" not in aux_cmds[0].splitlines()[1]
 
         ranks_mapping_cmd = (
             f"srun --export=ALL --mpi=pmix -N{nccl_tr.num_nodes} --container-image={tdef.docker_image.installed_path} "

@@ -151,19 +151,15 @@ class MetadataSlurm(BaseModel):
     job_id: str
 
 
-class MetadataRuntime(BaseModel):
-    """Represents software metadata collected inside the workload container."""
+class MetadataHost(BaseModel):
+    """Represents metadata collected directly from the Slurm host."""
 
-    os_type: str = "null"
-    os_version: str = "null"
-    mpi_type: str = "null"
-    mpi_version: str = "null"
-    hpcx_version: str = "null"
-    cuda_build_version: str = "null"
-    cuda_runtime_version: str = "null"
-    cuda_toolkit_version: str = "null"
-    nccl_version: str = "null"
-    nccl_commit_sha: str = "null"
+    user: str
+    system: MetadataSystem
+    mpi: MetadataMPI
+    cuda: MetadataCUDA
+    network: MetadataNetwork
+    nccl: MetadataNCCL
 
 
 class SlurmSystemMetadata(BaseModel):
@@ -176,4 +172,4 @@ class SlurmSystemMetadata(BaseModel):
     network: MetadataNetwork
     nccl: MetadataNCCL
     slurm: MetadataSlurm
-    runtime: MetadataRuntime = Field(default_factory=MetadataRuntime)
+    host: MetadataHost | None = None

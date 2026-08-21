@@ -331,13 +331,11 @@ class SlurmCommandGenStrategy(CommandGenStrategy):
             f"--error={metadata_error}",
         ]
 
-        host_command = " ".join([*metadata_srun_prefix, "bash", f"{metadata_script_path}/slurm-metadata.sh"])
-
         image_path = self.image_path()
         if not image_path:
-            return host_command
+            return " ".join([*metadata_srun_prefix, "bash", f"{metadata_script_path}/slurm-metadata.sh"])
 
-        runtime_command_parts = [*metadata_srun_prefix, "--open-mode=append", f"--container-image={image_path}"]
+        runtime_command_parts = [*metadata_srun_prefix, f"--container-image={image_path}"]
         mounts = self.container_mounts()
         if mounts:
             runtime_command_parts.append(f"--container-mounts={','.join(mounts)}")
@@ -345,7 +343,17 @@ class SlurmCommandGenStrategy(CommandGenStrategy):
             runtime_command_parts.append("--no-container-mount-home")
         runtime_command_parts.extend(["bash", f"{self.CONTAINER_MOUNT_INSTALL}/slurm-metadata.sh", "runtime"])
         runtime_command = " ".join(runtime_command_parts)
-        return "\n".join([host_command, runtime_command])
+
+        host_command = " ".join(
+            [
+                *metadata_srun_prefix,
+                "--open-mode=append",
+                "bash",
+                f"{metadata_script_path}/slurm-metadata.sh",
+                "host",
+            ]
+        )
+        return "\n".join([runtime_command, host_command])
 
     def _enable_vboost_cmd(self) -> str:
         num_nodes, _ = self.system.get_nodes_by_spec(self.test_run.nnodes, self.test_run.nodes)

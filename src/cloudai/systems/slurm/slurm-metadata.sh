@@ -235,22 +235,6 @@ if [ -r "$os_release_file" ]; then
     . "$os_release_file" 2>/dev/null || true
 fi
 
-if [ "${1:-host}" = "runtime" ]; then
-    printf '[runtime]\n'
-    emit_string os_type "${ID:-$UNKNOWN}"
-    emit_string os_version "${VERSION:-${VERSION_ID:-$UNKNOWN}}"
-    emit_string mpi_type "$(safe_probe mpi_type_probe)"
-    emit_string mpi_version "$(safe_probe mpi_version_probe)"
-    hpcx_version=${HPCX_DIR##*/}
-    emit_string hpcx_version "${hpcx_version:-$UNKNOWN}"
-    emit_string cuda_build_version "${CUDA_BUILD_VERSION:-$UNKNOWN}"
-    emit_string cuda_runtime_version "$(safe_probe driver_cuda_compat_probe)"
-    emit_string cuda_toolkit_version "$(safe_probe cuda_toolkit_version_probe)"
-    emit_string nccl_version "${NCCL_VERSION:-$UNKNOWN}"
-    emit_string nccl_commit_sha "${NCCL_COMMIT_SHA:-$UNKNOWN}"
-    exit 0
-fi
-
 user="${USER:-$(safe_probe whoami)}"
 kernel_version="$(safe_probe uname -r)"
 cpu_model="$(safe_probe lscpu_field "Model name")"
@@ -272,8 +256,17 @@ nic_count="$(printf '%s\n' "$nic_lines" | nonempty_line_count 2>/dev/null)" || n
 nic_inventory="$(printf '%s\n' "$nic_models" | inventory_from_lines 2>/dev/null)"
 nic_inventory="${nic_inventory:-$UNKNOWN}"
 
-emit_string user "$user"
-printf '\n[system]\n'
+mode="${1:-runtime}"
+if [ "$mode" = "host" ]; then
+    printf '[host]\n'
+    emit_string user "$user"
+    table_prefix="host."
+else
+    emit_string user "$user"
+    table_prefix=""
+fi
+
+printf '\n[%ssystem]\n' "$table_prefix"
 emit_string os_type "${ID:-$UNKNOWN}"
 emit_string os_version "${VERSION:-${VERSION_ID:-$UNKNOWN}}"
 emit_string linux_kernel_version "$kernel_version"
@@ -284,13 +277,13 @@ emit_string cpu_model_name "$cpu_model"
 emit_string cpu_arch_type "$cpu_arch"
 emit_string cpu_vendor "$cpu_vendor"
 
-printf '\n[mpi]\n'
+printf '\n[%smpi]\n' "$table_prefix"
 emit_string mpi_type "$(safe_probe mpi_type_probe)"
 emit_string mpi_version "$(safe_probe mpi_version_probe)"
 hpcx_version=${HPCX_DIR##*/}
 emit_string hpcx_version "${hpcx_version:-$UNKNOWN}"
 
-printf '\n[cuda]\n'
+printf '\n[%scuda]\n' "$table_prefix"
 emit_string cuda_build_version "${CUDA_BUILD_VERSION:-$UNKNOWN}"
 emit_string cuda_runtime_version "$(safe_probe driver_cuda_compat_probe)"
 driver_version="$(safe_probe gpu_driver_probe)"
@@ -298,7 +291,7 @@ emit_string cuda_driver_version "$driver_version"
 emit_string nvidia_driver_version "$driver_version"
 emit_string cuda_toolkit_version "$(safe_probe cuda_toolkit_version_probe)"
 
-printf '\n[network]\n'
+printf '\n[%snetwork]\n' "$table_prefix"
 emit_string nics "$nics"
 emit_integer nic_count "$nic_count"
 emit_string nic_inventory "$nic_inventory"
@@ -309,16 +302,18 @@ emit_string mofed_version "$(safe_probe ofed_version_probe)"
 emit_string doca_host_version "$(safe_probe doca_host_version_probe)"
 emit_string libfabric_version "$(safe_probe libfabric_version_probe)"
 
-printf '\n[nccl]\n'
+printf '\n[%snccl]\n' "$table_prefix"
 emit_string version "${NCCL_VERSION:-$UNKNOWN}"
 emit_string commit_sha "${NCCL_COMMIT_SHA:-$UNKNOWN}"
 
-printf '\n[slurm]\n'
-emit_string cluster_name "${SLURM_CLUSTER_NAME:-$UNKNOWN}"
-emit_string node_list "${SLURM_NODELIST:-$UNKNOWN}"
-emit_string num_nodes "${SLURM_NNODES:-$UNKNOWN}"
-emit_string ntasks_per_node "${SLURM_NTASKS_PER_NODE:-$UNKNOWN}"
-emit_string ntasks "${SLURM_NTASKS:-$UNKNOWN}"
-emit_string job_id "${SLURM_JOBID:-$UNKNOWN}"
+if [ "$mode" != "host" ]; then
+    printf '\n[slurm]\n'
+    emit_string cluster_name "${SLURM_CLUSTER_NAME:-$UNKNOWN}"
+    emit_string node_list "${SLURM_NODELIST:-$UNKNOWN}"
+    emit_string num_nodes "${SLURM_NNODES:-$UNKNOWN}"
+    emit_string ntasks_per_node "${SLURM_NTASKS_PER_NODE:-$UNKNOWN}"
+    emit_string ntasks "${SLURM_NTASKS:-$UNKNOWN}"
+    emit_string job_id "${SLURM_JOBID:-$UNKNOWN}"
+fi
 
 exit 0

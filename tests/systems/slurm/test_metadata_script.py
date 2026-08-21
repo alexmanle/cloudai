@@ -9,6 +9,7 @@ from pathlib import Path
 import toml
 
 from cloudai.systems import slurm
+from cloudai.systems.slurm import SlurmSystemMetadata
 
 METADATA_SCRIPT = Path(slurm.__file__).parent / "slurm-metadata.sh"
 
@@ -19,7 +20,7 @@ def _write_command(bin_dir: Path, name: str, body: str) -> None:
     command.chmod(0o755)
 
 
-def _run_collector(tmp_path: Path, commands: dict[str, str], mode: str = "host") -> subprocess.CompletedProcess[str]:
+def _run_collector(tmp_path: Path, commands: dict[str, str], mode: str = "runtime") -> subprocess.CompletedProcess[str]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     for name, body in commands.items():
@@ -128,7 +129,7 @@ def test_missing_subcommands_do_not_fail_or_corrupt_output(tmp_path: Path) -> No
     assert metadata["network"]["doca_host_version"] == "null"
 
 
-def test_collects_container_metadata_as_runtime_table(tmp_path: Path) -> None:
+def test_collects_container_metadata_in_legacy_sections(tmp_path: Path) -> None:
     result = _run_collector(
         tmp_path,
         {
@@ -141,17 +142,36 @@ def test_collects_container_metadata_as_runtime_table(tmp_path: Path) -> None:
 
     assert result.returncode == 0
     assert result.stderr == ""
-    assert toml.loads(result.stdout) == {
-        "runtime": {
-            "os_type": "ubuntu",
-            "os_version": "24.04 LTS",
-            "mpi_type": "openmpi",
-            "mpi_version": "4.1.9a1",
-            "hpcx_version": "null",
-            "cuda_build_version": "null",
-            "cuda_runtime_version": "13.1",
-            "cuda_toolkit_version": "13.0",
-            "nccl_version": "null",
-            "nccl_commit_sha": "null",
-        }
-    }
+    metadata = toml.loads(result.stdout)
+    assert "runtime" not in metadata
+    assert metadata["system"]["os_version"] == "24.04 LTS"
+    assert metadata["mpi"] == {"mpi_type": "openmpi", "mpi_version": "4.1.9a1", "hpcx_version": "null"}
+    assert metadata["cuda"]["cuda_runtime_version"] == "13.1"
+    assert metadata["cuda"]["cuda_toolkit_version"] == "13.0"
+
+
+def test_collects_host_metadata_under_host_namespace(tmp_path: Path) -> None:
+    result = _run_collector(tmp_path, {}, mode="host")
+
+    assert result.returncode == 0
+    metadata = toml.loads(result.stdout)
+    assert list(metadata) == ["host"]
+    assert metadata["host"]["user"] == 'metadata"user'
+    assert metadata["host"]["system"]["os_type"] == "ubuntu"
+    assert "slurm" not in metadata["host"]
+
+
+def test_runtime_and_host_outputs_form_one_valid_metadata_document(tmp_path: Path) -> None:
+    runtime_dir = tmp_path / "runtime"
+    host_dir = tmp_path / "host"
+    runtime_dir.mkdir()
+    host_dir.mkdir()
+
+    runtime_result = _run_collector(runtime_dir, {}, mode="runtime")
+    host_result = _run_collector(host_dir, {}, mode="host")
+    metadata = toml.loads(f"{runtime_result.stdout}\n{host_result.stdout}")
+
+    parsed = SlurmSystemMetadata.model_validate(metadata)
+    assert parsed.host is not None
+    assert parsed.system.os_type == "ubuntu"
+    assert parsed.host.system.os_type == "ubuntu"
