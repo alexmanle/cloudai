@@ -268,7 +268,7 @@ def generate_report(system_cfg: Path, tests_dir: Path, scenario_cfg: Path, hook_
 def verify_configs(configs_dir: Path, tests_dir: Path):
     """Verify the configuration TOML files."""
     args = argparse.Namespace(configs_dir=configs_dir, tests_dir=tests_dir)
-    exit(1 if handle_verify_all_configs(args) else 0)
+    raise click.exceptions.Exit(1 if handle_verify_all_configs(args) else 0)
 
 
 @main.command()
