@@ -451,13 +451,15 @@ def verify_system_configs(system_tomls: List[Path]) -> int:
                 with _ensure_kube_config_exists(system_toml, content):
                     Parser.parse_system(system_toml)
             except Exception as e:
-                logging.debug(f"Failed to parse system config {system_toml}: {e}", exc_info=True)
+                logging.error(f"Failed to verify system config {system_toml}: {e}")
+                logging.debug("", exc_info=True)
                 nfailed += 1
         else:
             try:
                 Parser.parse_system(system_toml)
             except Exception as e:
-                logging.debug(f"Failed to parse system config {system_toml}: {e}", exc_info=True)
+                logging.error(f"Failed to verify system config {system_toml}: {e}")
+                logging.debug("", exc_info=True)
                 nfailed += 1
 
     if nfailed:
@@ -477,7 +479,9 @@ def verify_test_configs(test_tomls: List[Path]) -> int:
             with test_toml.open() as fh:
                 tp.current_file = test_toml
                 tp.load_test_definition(load_test_toml_file(fh, test_toml))
-        except Exception:
+        except Exception as e:
+            logging.error(f"Failed to verify Test: {test_toml}: {e}")
+            logging.debug("", exc_info=True)
             nfailed += 1
 
     if nfailed:
@@ -501,7 +505,9 @@ def verify_test_scenarios(
             hooks = Parser.parse_hooks(hook_tomls, system, {t.name: t for t in hook_tests})
             scenario = Parser.parse_test_scenario(scenario_file, system, {t.name: t for t in tests}, hooks)
             validate_domain_randomization_active(scenario)
-        except Exception:
+        except Exception as e:
+            logging.error(f"Failed to verify Test Scenario: {scenario_file}: {e}")
+            logging.debug("", exc_info=True)
             nfailed += 1
 
     if nfailed:

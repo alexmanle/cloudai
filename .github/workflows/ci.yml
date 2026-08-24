@@ -78,12 +78,7 @@ jobs:
           uv run --locked --python 3.14 --extra dev python -m pytest -vv -m ci_only
 
       - name: Verify common configurations
-        run: |
-          output="$(uv run --locked --python 3.14 cloudai verify-configs --tests-dir conf/common/test conf/common/test_scenario)"
-          printf '%s\n' "$output"
-          if grep -q '^\[ERROR\]' <<< "$output"; then
-            exit 1
-          fi
+        run: uv run --locked --python 3.14 cloudai verify-configs --tests-dir conf/common/test conf/common/test_scenario
 
   smoke:
     name: Smoke test
