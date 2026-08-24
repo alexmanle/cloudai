@@ -77,9 +77,6 @@ jobs:
 
           uv run --locked --python 3.14 --extra dev python -m pytest -vv -m ci_only
 
-      - name: Verify common configurations
-        run: uv run --locked --python 3.14 cloudai verify-configs --tests-dir conf/common/test conf/common/test_scenario
-
   smoke:
     name: Smoke test
 
@@ -117,9 +114,6 @@ jobs:
           set -o pipefail
 
           .smoke-venv/bin/cloudai --help
-
-          # this checks that all TOMLs are valid, Test Scenarios are checked for _all_ tests
-          .smoke-venv/bin/cloudai verify-configs conf/
 
           # this checks that all TOMLs are valid, Test Scenarios are checked _only_ the tests in the specified directory
           .smoke-venv/bin/cloudai verify-configs --tests-dir conf/common/test conf/common

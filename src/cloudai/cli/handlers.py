@@ -495,7 +495,7 @@ def verify_test_configs(test_tomls: List[Path]) -> int:
 def verify_test_scenarios(
     scenario_tomls: List[Path], test_tomls: list[Path], hook_tomls: List[Path], hook_test_tomls: list[Path]
 ) -> int:
-    system = Mock(spec=System)
+    system = Mock(spec=System, sol={})
     nfailed = 0
     for scenario_file in scenario_tomls:
         logging.debug(f"Verifying Test Scenario: {scenario_file}...")
