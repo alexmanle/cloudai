@@ -105,8 +105,6 @@ jobs:
 
           python -m venv .smoke-venv
           .smoke-venv/bin/python -m pip install .
-          .smoke-venv/bin/python -m pip uninstall --yes cloudai
-          .smoke-venv/bin/python -m pip install --editable .
 
       - name: Test commands
         run: |
