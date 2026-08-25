@@ -181,6 +181,12 @@ def create_test_run(partial_tr: partial[TestRun], name: str, test_definition: Te
     return tr
 
 
+def with_installed_dynamo_repo(test_definition: AIDynamoTestDefinition, installed_path: Path) -> AIDynamoTestDefinition:
+    """Set the fake installed path used by acceptance command generation."""
+    test_definition.repo.installed_path = installed_path
+    return test_definition
+
+
 def build_special_test_run(
     partial_tr: partial[TestRun], param: str, test_mapping: Dict[str, Callable[[], TestRun]]
 ) -> Tuple[TestRun, str, Optional[str]]:
@@ -514,69 +520,67 @@ def test_req(request, slurm_system: SlurmSystem, partial_tr: partial[TestRun]) -
         "ai-dynamo": lambda: create_test_run(
             partial_tr,
             "ai-dynamo",
-            AIDynamoTestDefinition(
-                name="ai-dynamo",
-                description="AI Dynamo test",
-                test_template_name="ai-dynamo",
-                repo=GitRepo(
-                    url="https://github.com/ai-dynamo/dynamo.git",
-                    commit="f7e468c7e8ff0d1426db987564e60572167e8464",
-                    installed_path=slurm_system.install_path,
-                ),
-                cmd_args=AIDynamoCmdArgs(
-                    docker_image_url="nvcr.io/nvidia/ai-dynamo:24.09",
-                    workloads="aiperf.sh",
-                    dynamo=AIDynamoArgs(
-                        model="model",
-                        backend="vllm",
-                        endpoint="v1/chat/completions",
-                        workspace_path="/workspace",
-                        dcgm_exporter=DCGMExporter(enabled=True, port=9501),
-                        prefill_worker=WorkerConfig(
-                            cmd="python3 -m dynamo.vllm --is-prefill-worker",
-                            worker_initialized_regex="VllmWorker.*has.been.initialized",
-                            **{
-                                "num-nodes": 1,
-                                "args": WorkerBaseArgs(),
-                            },
+            with_installed_dynamo_repo(
+                AIDynamoTestDefinition(
+                    name="ai-dynamo",
+                    description="AI Dynamo test",
+                    test_template_name="ai-dynamo",
+                    cmd_args=AIDynamoCmdArgs(
+                        docker_image_url="nvcr.io/nvidia/ai-dynamo:24.09",
+                        workloads="aiperf.sh",
+                        dynamo=AIDynamoArgs(
+                            model="model",
+                            backend="vllm",
+                            endpoint="v1/chat/completions",
+                            workspace_path="/workspace",
+                            dcgm_exporter=DCGMExporter(enabled=True, port=9501),
+                            prefill_worker=WorkerConfig(
+                                cmd="python3 -m dynamo.vllm --is-prefill-worker",
+                                worker_initialized_regex="VllmWorker.*has.been.initialized",
+                                **{
+                                    "num-nodes": 1,
+                                    "args": WorkerBaseArgs(),
+                                },
+                            ),
+                            decode_worker=WorkerConfig(
+                                cmd="python3 -m dynamo.vllm",
+                                worker_initialized_regex="VllmWorker.*has.been.initialized",
+                                **{
+                                    "num-nodes": 1,
+                                    "args": WorkerBaseArgs(),
+                                },
+                            ),
                         ),
-                        decode_worker=WorkerConfig(
-                            cmd="python3 -m dynamo.vllm",
-                            worker_initialized_regex="VllmWorker.*has.been.initialized",
+                        genai_perf=GenAIPerf(
                             **{
-                                "num-nodes": 1,
-                                "args": WorkerBaseArgs(),
-                            },
+                                "streaming": True,
+                                "extra-inputs": '{"temperature": 0.7, "max_tokens": 128}',
+                                "output-tokens-mean": 128,
+                                "random-seed": 42,
+                                "request-count": 100,
+                                "synthetic-input-tokens-mean": 550,
+                                "warmup-request-count": 10,
+                            }
                         ),
+                        aiperf=AIPerf.model_validate(
+                            {
+                                "extra-args": "--server-metrics-formats json csv",
+                                "args": {
+                                    "concurrency": 2,
+                                    "request-count": 50,
+                                    "synthetic-input-tokens-mean": 300,
+                                    "output-tokens-mean": 500,
+                                    "server-metrics": "auto",
+                                },
+                            }
+                        ),
+                        aiperf_phases=[
+                            AIPerfPhase.model_validate({"name": "round_1", "args": {"concurrency": 1}}),
+                            AIPerfPhase.model_validate({"name": "round_2", "args": {"request-count": 10}}),
+                        ],
                     ),
-                    genai_perf=GenAIPerf(
-                        **{
-                            "streaming": True,
-                            "extra-inputs": '{"temperature": 0.7, "max_tokens": 128}',
-                            "output-tokens-mean": 128,
-                            "random-seed": 42,
-                            "request-count": 100,
-                            "synthetic-input-tokens-mean": 550,
-                            "warmup-request-count": 10,
-                        }
-                    ),
-                    aiperf=AIPerf.model_validate(
-                        {
-                            "extra-args": "--server-metrics-formats json csv",
-                            "args": {
-                                "concurrency": 2,
-                                "request-count": 50,
-                                "synthetic-input-tokens-mean": 300,
-                                "output-tokens-mean": 500,
-                                "server-metrics": "auto",
-                            },
-                        }
-                    ),
-                    aiperf_phases=[
-                        AIPerfPhase.model_validate({"name": "round_1", "args": {"concurrency": 1}}),
-                        AIPerfPhase.model_validate({"name": "round_2", "args": {"request-count": 10}}),
-                    ],
                 ),
+                slurm_system.install_path,
             ),
         ),
         "moe-benchmark": lambda: create_test_run(

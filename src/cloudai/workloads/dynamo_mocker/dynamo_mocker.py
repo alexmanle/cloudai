@@ -218,6 +218,10 @@ class MockerAIPerfArgs(BaseModel):
 class DynamoMockerCmdArgs(CmdArgs):
     """Top-level command arguments for the Dynamo Mocker workload."""
 
+    requirements: str = Field(
+        default="ai-dynamo==1.3.0.post1 genai-perf==0.0.16 aiperf==0.11.0",
+        description="Space-separated Python requirements installed into the Dynamo Mocker environment.",
+    )
     model_path: str = "Qwen/Qwen3-0.6B"
     nats_cmd: str = Field(
         default="nats-server -js",
@@ -260,7 +264,7 @@ class DynamoMockerTestDefinition(TestDefinition):
             self._python_environment = PythonEnvironment(
                 name="dynamo-mocker",
                 python_version="3.12",
-                requirements=["ai-dynamo", "genai-perf", "aiperf"],
+                requirements=self.cmd_args.requirements.split(),
             )
         return self._python_environment
 

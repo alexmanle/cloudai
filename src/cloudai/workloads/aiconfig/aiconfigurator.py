@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import List, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from cloudai.core import CmdArgs, Installable, PythonEnvironment, TestDefinition
 
@@ -61,6 +61,10 @@ class Disagg(BaseModel):
 class AiconfiguratorCmdArgs(CmdArgs):
     """Command arguments for Aiconfigurator workload with nested agg/disagg configs."""
 
+    requirements: str = Field(
+        default="aiconfigurator~=0.5.0",
+        description="Space-separated Python requirements installed into the Aiconfigurator environment.",
+    )
     model_name: str
     system: str
     backend: str = "trtllm"
@@ -91,7 +95,7 @@ class AiconfiguratorTestDefinition(TestDefinition):
         return PythonEnvironment(
             name="aiconfigurator",
             python_version="3.10",
-            requirements=["aiconfigurator~=0.5.0"],
+            requirements=self.cmd_args.requirements.split(),
         )
 
     @property

@@ -66,6 +66,11 @@ class MegatronBridgeCmdArgs(CmdArgs):
     wandb_experiment_name: Optional[str] = Field(default=None)
     wandb_save_dir: Optional[str] = Field(default=None)
     wandb_version: str = Field(default="0.28.1", description="W&B version installed in the launcher environment.")
+    numpy_version: str = Field(default="1.26.4", description="NumPy version installed in the launcher environment.")
+    nemorun_version: str = Field(
+        default="v0.10.0",
+        description="NeMo Run Git commit, tag, or branch used by the launcher environment.",
+    )
 
     # Retries
     max_retries: Optional[int] = Field(default=1)
@@ -181,14 +186,18 @@ class MegatronBridgeTestDefinition(TestDefinition):
 
     cmd_args: MegatronBridgeCmdArgs
 
-    nemo_run_repo: GitRepo = GitRepo(
-        url="https://github.com/NVIDIA-NeMo/Run.git",
-        commit="main",
-    )
-
     _docker_image: Optional[DockerImage] = None
     _python_executable: Optional[PythonExecutable] = None
     _megatron_bridge_repo: Optional[GitRepo] = None
+    _nemo_run_repo: Optional[GitRepo] = None
+
+    @property
+    def nemo_run_repo(self) -> GitRepo:
+        """Return the NeMo Run repository selected by ``cmd_args.nemorun_version``."""
+        version = self.cmd_args.nemorun_version
+        if self._nemo_run_repo is None or self._nemo_run_repo.commit != version:
+            self._nemo_run_repo = GitRepo(url="https://github.com/NVIDIA-NeMo/Run.git", commit=version)
+        return self._nemo_run_repo
 
     @staticmethod
     def _select_megatron_bridge_repo(git_repos: list[GitRepo]) -> GitRepo | None:
@@ -229,8 +238,9 @@ class MegatronBridgeTestDefinition(TestDefinition):
 
     @property
     def python_executable(self) -> PythonExecutable:
-        if not self._python_executable:
-            self._python_executable = PythonExecutable(git_repo=self.nemo_run_repo)
+        nemo_run_repo = self.nemo_run_repo
+        if not self._python_executable or self._python_executable.git_repo != nemo_run_repo:
+            self._python_executable = PythonExecutable(git_repo=nemo_run_repo)
         return self._python_executable
 
     @property

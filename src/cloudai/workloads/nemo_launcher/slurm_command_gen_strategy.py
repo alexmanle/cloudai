@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
-# Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -47,6 +47,7 @@ class NeMoLauncherSlurmCommandGenStrategy(SlurmCommandGenStrategy):
 
         self.final_cmd_args["container"] = str(tdef.docker_image.installed_path)
         self.final_cmd_args.pop("docker_image_url", None)
+        self.final_cmd_args.pop("launcher_version", None)
 
         if self.job_prefix is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
