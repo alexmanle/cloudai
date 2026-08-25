@@ -310,20 +310,50 @@ class SlurmCommandGenStrategy(CommandGenStrategy):
     def _metadata_cmd(self) -> str:
         (self.test_run.output_path.absolute() / "metadata").mkdir(parents=True, exist_ok=True)
         num_nodes, _ = self.get_cached_nodes_spec()
-        metadata_script_path = "/cloudai_install"
-        if not self.image_path():
-            metadata_script_path = str(self.system.install_path.absolute())
-        return " ".join(
+        metadata_script_path = self.system.install_path.absolute()
+
+        metadata_output = self.test_run.output_path.absolute() / "metadata" / "node-%N.toml"
+        metadata_error = self.test_run.output_path.absolute() / "metadata" / "nodes.err"
+
+        metadata_srun_prefix = ["srun", "--export=ALL", "--mpi=none"]
+        if not self.nodelist_in_use:
+            metadata_srun_prefix.append(f"-N{num_nodes}")
+        if self.system.extra_srun_args:
+            metadata_srun_prefix.append(self.system.extra_srun_args)
+        if self.test_run.extra_srun_args:
+            metadata_srun_prefix.append(self.test_run.extra_srun_args)
+
+        metadata_srun_prefix = [
+            *metadata_srun_prefix,
+            f"--ntasks={num_nodes}",
+            "--ntasks-per-node=1",
+            f"--output={metadata_output}",
+            f"--error={metadata_error}",
+        ]
+
+        image_path = self.image_path()
+        if not image_path:
+            return " ".join([*metadata_srun_prefix, "bash", f"{metadata_script_path}/slurm-metadata.sh"])
+
+        runtime_command_parts = [*metadata_srun_prefix, f"--container-image={image_path}"]
+        mounts = self.container_mounts()
+        if mounts:
+            runtime_command_parts.append(f"--container-mounts={','.join(mounts)}")
+        if not self.system.container_mount_home:
+            runtime_command_parts.append("--no-container-mount-home")
+        runtime_command_parts.extend(["bash", f"{self.CONTAINER_MOUNT_INSTALL}/slurm-metadata.sh", "runtime"])
+        runtime_command = " ".join(runtime_command_parts)
+
+        host_command = " ".join(
             [
-                *self.gen_srun_prefix(),
-                f"--ntasks={num_nodes}",
-                "--ntasks-per-node=1",
-                f"--output={self.test_run.output_path.absolute() / 'metadata' / 'node-%N.toml'}",
-                f"--error={self.test_run.output_path.absolute() / 'metadata' / 'nodes.err'}",
+                *metadata_srun_prefix,
+                "--open-mode=append",
                 "bash",
                 f"{metadata_script_path}/slurm-metadata.sh",
+                "host",
             ]
         )
+        return "\n".join([runtime_command, host_command])
 
     def _enable_vboost_cmd(self) -> str:
         num_nodes, _ = self.system.get_nodes_by_spec(self.test_run.nnodes, self.test_run.nodes)
