@@ -99,7 +99,7 @@ def test_gen_decode(json_gen: AIDynamoKubernetesJsonGenStrategy) -> None:
     assert decode.get("replicas") == 1
 
     args = ["--model", tdef.cmd_args.dynamo.model]
-    if tdef.cmd_args.dynamo.prefill_worker:
+    if tdef.cmd_args.dynamo.prefill_worker.is_enabled:
         assert decode.get("subComponentType") == "decode-worker"
         args.append("--is-decode-worker")
 
@@ -111,6 +111,7 @@ def test_gen_decode(json_gen: AIDynamoKubernetesJsonGenStrategy) -> None:
     main_container = decode.get("extraPodSpec", {}).get("mainContainer", {})
     assert main_container.get("image") == tdef.cmd_args.docker_image_url
     assert main_container.get("workingDir") == tdef.cmd_args.dynamo.workspace_path
+    assert tdef.cmd_args.dynamo.decode_worker.cmd is not None
     assert main_container.get("command") == tdef.cmd_args.dynamo.decode_worker.cmd.split()
     assert main_container.get("args") == args
 
@@ -136,8 +137,8 @@ def test_gen_prefill(json_gen: AIDynamoKubernetesJsonGenStrategy) -> None:
     system = cast(KubernetesSystem, json_gen.system)
     tdef = cast(AIDynamoTestDefinition, json_gen.test_run.test)
 
-    if not tdef.cmd_args.dynamo.prefill_worker:
-        with pytest.raises(ValueError, match=r"Prefill worker configuration is not defined in the test definition."):
+    if not tdef.cmd_args.dynamo.prefill_worker.is_enabled:
+        with pytest.raises(ValueError, match=r"Prefill worker is disabled in the test definition."):
             json_gen.gen_prefill_dict()
         return
 
@@ -156,6 +157,7 @@ def test_gen_prefill(json_gen: AIDynamoKubernetesJsonGenStrategy) -> None:
     main_container = prefill.get("extraPodSpec", {}).get("mainContainer", {})
     assert main_container.get("image") == tdef.cmd_args.docker_image_url
     assert main_container.get("workingDir") == tdef.cmd_args.dynamo.workspace_path
+    assert tdef.cmd_args.dynamo.prefill_worker.cmd is not None
     assert main_container.get("command") == tdef.cmd_args.dynamo.prefill_worker.cmd.split()
     assert main_container.get("args") == args
 
@@ -166,7 +168,7 @@ def test_gen_prefill(json_gen: AIDynamoKubernetesJsonGenStrategy) -> None:
 @pytest.mark.parametrize("num_nodes", [1, 2, 4])
 def test_gen_prefill_num_nodes(num_nodes: int, json_gen: AIDynamoKubernetesJsonGenStrategy) -> None:
     tdef = cast(AIDynamoTestDefinition, json_gen.test_run.test)
-    if not tdef.cmd_args.dynamo.prefill_worker:
+    if not tdef.cmd_args.dynamo.prefill_worker.is_enabled:
         pytest.skip("Prefill worker configuration is not defined in the test definition.")
 
     tdef.cmd_args.dynamo.prefill_worker.num_nodes = num_nodes
@@ -203,7 +205,7 @@ def test_gen_json(json_gen: AIDynamoKubernetesJsonGenStrategy) -> None:
     assert deployment.get("kind") == "DynamoGraphDeployment"
     assert deployment.get("metadata", {}).get("name") == k8s_system.default_namespace
 
-    if tdef.cmd_args.dynamo.prefill_worker:
+    if tdef.cmd_args.dynamo.prefill_worker.is_enabled:
         assert "prefill" in deployment.get("spec", {}).get("services", {})
     else:
         assert "spec" in deployment
@@ -213,6 +215,19 @@ def test_gen_json(json_gen: AIDynamoKubernetesJsonGenStrategy) -> None:
     with open(json_gen.test_run.output_path / json_gen.DEPLOYMENT_FILE_NAME, "r") as f:
         content = yaml.safe_load(f)
         assert content == deployment
+
+
+def test_gen_json_omits_disabled_prefill_worker(json_gen: AIDynamoKubernetesJsonGenStrategy) -> None:
+    tdef = cast(AIDynamoTestDefinition, json_gen.test_run.test)
+    tdef.cmd_args.dynamo.prefill_worker = WorkerConfig(num_nodes=0)
+    json_gen.test_run.output_path.mkdir(parents=True, exist_ok=True)
+
+    deployment = json_gen.gen_json()
+
+    services = deployment["spec"]["services"]
+    assert "prefill" not in services
+    assert "subComponentType" not in services["decode"]
+    assert "--is-decode-worker" not in services["decode"]["extraPodSpec"]["mainContainer"]["args"]
 
 
 class TestDynamoCniNetworking:

@@ -48,39 +48,45 @@ class AIDynamoKubernetesJsonGenStrategy(JsonGenStrategy):
 
     def gen_decode_dict(self, cni_networks: list[str] | None = None) -> dict[str, Any]:
         tdef = cast(AIDynamoTestDefinition, self.test_run.test)
+        decode_worker = tdef.cmd_args.dynamo.decode_worker
+        if not decode_worker.is_enabled:
+            raise ValueError("Decode worker must be enabled for Kubernetes deployments.")
+        assert decode_worker.cmd is not None
 
         decode_cfg = self._get_base_service_dict(cni_networks)
-        decode_cfg["extraPodSpec"]["mainContainer"]["command"] = tdef.cmd_args.dynamo.decode_worker.cmd.split()
+        decode_cfg["extraPodSpec"]["mainContainer"]["command"] = decode_worker.cmd.split()
 
         args = ["--model", tdef.cmd_args.dynamo.model]
-        if tdef.cmd_args.dynamo.prefill_worker:
+        if tdef.cmd_args.dynamo.prefill_worker.is_enabled:
             decode_cfg["subComponentType"] = "decode-worker"
             args.append("--is-decode-worker")
-        args.extend(self._args_from_worker_config(tdef.cmd_args.dynamo.decode_worker))
+        args.extend(self._args_from_worker_config(decode_worker))
 
         decode_cfg["extraPodSpec"]["mainContainer"]["args"] = args
 
-        self._set_multinode_if_needed(decode_cfg, tdef.cmd_args.dynamo.decode_worker)
+        self._set_multinode_if_needed(decode_cfg, decode_worker)
 
         return decode_cfg
 
     def gen_prefill_dict(self, cni_networks: list[str] | None = None) -> dict[str, Any]:
         tdef = cast(AIDynamoTestDefinition, self.test_run.test)
-        if not tdef.cmd_args.dynamo.prefill_worker:
-            raise ValueError("Prefill worker configuration is not defined in the test definition.")
+        prefill_worker = tdef.cmd_args.dynamo.prefill_worker
+        if not prefill_worker.is_enabled:
+            raise ValueError("Prefill worker is disabled in the test definition.")
+        assert prefill_worker.cmd is not None
 
         prefill_cfg = self._get_base_service_dict(cni_networks)
         prefill_cfg["subComponentType"] = "prefill"
-        prefill_cfg["extraPodSpec"]["mainContainer"]["command"] = tdef.cmd_args.dynamo.prefill_worker.cmd.split()
+        prefill_cfg["extraPodSpec"]["mainContainer"]["command"] = prefill_worker.cmd.split()
 
         prefill_cfg["extraPodSpec"]["mainContainer"]["args"] = [
             "--model",
             tdef.cmd_args.dynamo.model,
             "--is-prefill-worker",
-            *self._args_from_worker_config(tdef.cmd_args.dynamo.prefill_worker),
+            *self._args_from_worker_config(prefill_worker),
         ]
 
-        self._set_multinode_if_needed(prefill_cfg, tdef.cmd_args.dynamo.prefill_worker)
+        self._set_multinode_if_needed(prefill_cfg, prefill_worker)
 
         return prefill_cfg
 
@@ -100,7 +106,7 @@ class AIDynamoKubernetesJsonGenStrategy(JsonGenStrategy):
                 },
             },
         }
-        if td.cmd_args.dynamo.prefill_worker:
+        if td.cmd_args.dynamo.prefill_worker.is_enabled:
             deployment["spec"]["services"]["prefill"] = self.gen_prefill_dict(cni_networks)
 
         with (self.test_run.output_path / self.DEPLOYMENT_FILE_NAME).open("w") as f:
