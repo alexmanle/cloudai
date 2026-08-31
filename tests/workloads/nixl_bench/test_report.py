@@ -18,11 +18,12 @@ import copy
 from pathlib import Path
 
 import pytest
+import toml
 
 import cloudai.metrics
 from cloudai.core import TestRun, TestScenario
 from cloudai.report_generator.comparison_report import ComparisonReportConfig
-from cloudai.systems.slurm import SlurmSystem
+from cloudai.systems.slurm import SlurmJobMetadata, SlurmStepMetadata, SlurmSystem
 from cloudai.workloads.common.nixl import extract_nixlbench_data
 from cloudai.workloads.nixl_bench import NIXLBenchCmdArgs, NIXLBenchComparisonReport, NIXLBenchTestDefinition
 
@@ -157,6 +158,46 @@ Block Size (B)      Batch Size     B/W (GB/Sec)   Avg Lat. (us)  Avg Prep (us)  
 
 
 class TestWasRunSuccessful:
+    @staticmethod
+    def _step(step_id: str, state: str, exit_code: str, command: str) -> SlurmStepMetadata:
+        return SlurmStepMetadata(
+            job_id=123,
+            step_id=step_id,
+            name="bash",
+            state=state,
+            exit_code=exit_code,
+            start_time="2026-08-31T03:25:35",
+            end_time="2026-08-31T03:28:24",
+            elapsed_time_sec=169,
+            submit_line=f"srun bash -c {command}",
+        )
+
+    @staticmethod
+    def _write_slurm_metadata(
+        output_path: Path,
+        steps: list[SlurmStepMetadata],
+        *,
+        state: str = "COMPLETED",
+        exit_code: str = "0:0",
+    ) -> None:
+        with (output_path / "slurm-job.toml").open("w", encoding="utf-8") as file:
+            toml.dump(
+                SlurmJobMetadata(
+                    job_id=123,
+                    name="nixlbench",
+                    state=state,
+                    exit_code=exit_code,
+                    start_time="2026-08-31T03:25:03",
+                    end_time="2026-08-31T03:28:25",
+                    elapsed_time_sec=202,
+                    srun_cmd="srun nixlbench",
+                    test_cmd="nixlbench",
+                    job_root=output_path,
+                    job_steps=steps,
+                ).model_dump(),
+                file,
+            )
+
     def test_no_file(self, nixl_tr: TestRun):
         assert not nixl_tr.test.was_run_successful(nixl_tr).is_successful
 
@@ -170,3 +211,64 @@ class TestWasRunSuccessful:
         nixl_tr.output_path.mkdir(parents=True, exist_ok=True)
         nixl_tr.output_path.joinpath("stdout.txt").write_text(sample)
         assert nixl_tr.test.was_run_successful(nixl_tr).is_successful
+
+    def test_failed_nixlbench_step_is_reported(self, nixl_tr: TestRun):
+        nixl_tr.output_path.mkdir(parents=True, exist_ok=True)
+        nixl_tr.output_path.joinpath("stdout.txt").write_text(NEW_FORMAT)
+        self._write_slurm_metadata(
+            nixl_tr.output_path,
+            [
+                self._step("2", "CANCELLED", "0:9", "etcd"),
+                self._step(
+                    "3",
+                    "FAILED",
+                    "1:0",
+                    nixl_tr.test.cmd_args.path_to_benchmark,
+                ),
+                self._step(
+                    "4",
+                    "COMPLETED",
+                    "0:0",
+                    nixl_tr.test.cmd_args.path_to_benchmark,
+                ),
+            ],
+        )
+
+        result = nixl_tr.test.was_run_successful(nixl_tr)
+
+        assert not result.is_successful
+        assert "123.3 state=FAILED, exit_code=1:0" in result.error_message
+
+    def test_expected_etcd_cancellation_is_ignored(self, nixl_tr: TestRun):
+        nixl_tr.output_path.mkdir(parents=True, exist_ok=True)
+        nixl_tr.output_path.joinpath("stdout.txt").write_text(NEW_FORMAT)
+        self._write_slurm_metadata(
+            nixl_tr.output_path,
+            [
+                self._step("2", "CANCELLED", "0:9", "etcd"),
+                self._step(
+                    "3",
+                    "COMPLETED",
+                    "0:0",
+                    nixl_tr.test.cmd_args.path_to_benchmark,
+                ),
+                self._step(
+                    "4",
+                    "COMPLETED",
+                    "0:0",
+                    nixl_tr.test.cmd_args.path_to_benchmark,
+                ),
+            ],
+        )
+
+        assert nixl_tr.test.was_run_successful(nixl_tr).is_successful
+
+    def test_failed_parent_slurm_job_is_reported(self, nixl_tr: TestRun):
+        nixl_tr.output_path.mkdir(parents=True, exist_ok=True)
+        nixl_tr.output_path.joinpath("stdout.txt").write_text(NEW_FORMAT)
+        self._write_slurm_metadata(nixl_tr.output_path, [], state="FAILED", exit_code="1:0")
+
+        result = nixl_tr.test.was_run_successful(nixl_tr)
+
+        assert not result.is_successful
+        assert "state=FAILED, exit_code=1:0" in result.error_message

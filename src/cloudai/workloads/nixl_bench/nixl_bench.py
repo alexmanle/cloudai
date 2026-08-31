@@ -19,9 +19,11 @@ from __future__ import annotations
 from typing import Any, Literal, cast
 
 import pydantic
+import toml
 
 import cloudai.metrics
 from cloudai.core import JobStatusResult, System, TestRun
+from cloudai.systems.slurm import SlurmJobMetadata
 from cloudai.util.lazy_imports import lazy
 from cloudai.workloads.common.nixl import (
     MANAGED_ETCD_ENDPOINTS,
@@ -79,6 +81,34 @@ class NIXLBenchTestDefinition(NIXLBaseTestDefinition[NIXLBenchCmdArgs]):
         return cmd_args
 
     def was_run_successful(self, tr: TestRun) -> JobStatusResult:
+        slurm_job_path = tr.output_path / "slurm-job.toml"
+        if slurm_job_path.is_file():
+            with slurm_job_path.open("r", encoding="utf-8") as file:
+                metadata = SlurmJobMetadata.model_validate(toml.load(file))
+
+            if metadata.state != "COMPLETED" or metadata.exit_code != "0:0":
+                return JobStatusResult(
+                    is_successful=False,
+                    error_message=(
+                        f"NIXLBench Slurm job failed for {tr.output_path}: "
+                        f"state={metadata.state}, exit_code={metadata.exit_code}."
+                    ),
+                )
+
+            benchmark_steps = [
+                step for step in metadata.job_steps if self.cmd_args.path_to_benchmark in step.submit_line
+            ]
+            failed_steps = [step for step in benchmark_steps if step.state != "COMPLETED" or step.exit_code != "0:0"]
+            if failed_steps:
+                failures = ", ".join(
+                    f"{step.job_id}.{step.step_id} state={step.state}, exit_code={step.exit_code}"
+                    for step in failed_steps
+                )
+                return JobStatusResult(
+                    is_successful=False,
+                    error_message=f"NIXLBench Slurm step failed for {tr.output_path}: {failures}.",
+                )
+
         df = extract_nixlbench_data(tr.output_path / "stdout.txt")
         if df.empty:
             return JobStatusResult(is_successful=False, error_message=f"NIXLBench data not found in {tr.output_path}.")
