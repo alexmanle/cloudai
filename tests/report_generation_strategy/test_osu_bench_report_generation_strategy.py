@@ -15,10 +15,16 @@
 # limitations under the License.
 
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
-from cloudai.workloads.osu_bench.report_generation_strategy import extract_osu_bench_data
+from cloudai.core import METRIC_ERROR, TestRun
+from cloudai.systems.slurm import SlurmSystem
+from cloudai.workloads.osu_bench.report_generation_strategy import (
+    OSUBenchReportGenerationStrategy,
+    extract_osu_bench_data,
+)
 
 OSU_MULTIPLE_BW = """\
 # OSU MPI Multiple Bandwidth / Message Rate Test v7.4
@@ -110,6 +116,23 @@ def test_osu_multi_latency_short_header_parsing(tmp_path: Path) -> None:
     assert df.shape == (6, 2)
     assert df["size"].tolist() == [1, 2, 4, 8, 16, 32]
     assert df["avg_lat"].tolist() == pytest.approx([1.88, 1.84, 1.88, 1.91, 1.87, 2.01])
+
+
+def test_get_metric_returns_mean_latency(tmp_path: Path, slurm_system: SlurmSystem) -> None:
+    (tmp_path / "stdout.txt").write_text(OSU_ALLGATHER_LAT)
+    tr = TestRun(name="osu", test=Mock(), num_nodes=2, nodes=[], output_path=tmp_path)
+    strategy = OSUBenchReportGenerationStrategy(slurm_system, tr)
+
+    assert strategy.get_metric("default") == pytest.approx((2.81 + 104.30) / 2)
+
+
+def test_get_metric_returns_error_for_unsupported_metric_or_output(tmp_path: Path, slurm_system: SlurmSystem) -> None:
+    (tmp_path / "stdout.txt").write_text(OSU_BW)
+    tr = TestRun(name="osu", test=Mock(), num_nodes=2, nodes=[], output_path=tmp_path)
+    strategy = OSUBenchReportGenerationStrategy(slurm_system, tr)
+
+    assert strategy.get_metric("default") is METRIC_ERROR
+    assert strategy.get_metric("avg_lat") is METRIC_ERROR
 
 
 def test_extract_osu_bench_data_file_not_found_returns_empty_dataframe(tmp_path: Path) -> None:
