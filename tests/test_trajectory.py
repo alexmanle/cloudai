@@ -68,6 +68,34 @@ def test_append_flattens_domains_into_dataframe_columns(tmp_path: Path) -> None:
     ]
 
 
+def test_load_reads_core_and_metadata_dataframe(tmp_path: Path) -> None:
+    trajectory = Trajectory(iteration_dir=tmp_path)
+    trajectory.append(
+        step=1,
+        action={"x": 1},
+        reward=2.5,
+        observation={"throughput": 120.0},
+        logging={"power": 600.0},
+    )
+    core_contents = trajectory.output_path.read_text()
+    metadata_contents = trajectory.metadata_path.read_text()
+
+    loaded = Trajectory.load(trajectory.output_path)
+
+    assert loaded.dataframe.to_dict(orient="records") == [
+        {
+            "step": 1,
+            "action.x": 1,
+            "reward": 2.5,
+            "observation": [120.0],
+            "logging.power": 600.0,
+        }
+    ]
+    assert loaded.find(action={"x": 1}, observation=[120.0]) is not None
+    assert trajectory.output_path.read_text() == core_contents
+    assert trajectory.metadata_path.read_text() == metadata_contents
+
+
 def test_dataframe_and_returned_rows_are_copies(tmp_path: Path) -> None:
     trajectory = Trajectory(iteration_dir=tmp_path)
     samples = [1, 2]

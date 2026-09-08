@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import csv
 import logging
+from ast import literal_eval
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from pathlib import Path
@@ -73,6 +74,44 @@ class Trajectory:
     def metadata_path(self) -> Path:
         """Return the trajectory metadata CSV path."""
         return self._iteration_dir / self.metadata_file_name
+
+    @classmethod
+    def load(cls, path: Path) -> Trajectory:
+        """Load a persisted trajectory and its optional metadata CSV."""
+        path = Path(path)
+        if not path.is_file():
+            raise FileNotFoundError(f"trajectory file not found: {path}")
+
+        core = lazy.pd.read_csv(path, dtype=object)
+        fields = tuple(core.columns)
+        if fields != cls._core_fields:
+            raise ValueError(f"trajectory file fields do not match: expected {cls._core_fields}, got {fields}")
+        core = core.map(_parse_csv_value)
+
+        dataframe_records: list[dict[str, object]] = []
+        for record in core.to_dict(orient="records"):
+            dataframe_record = {"step": record["step"]}
+            for domain in cls._core_fields[1:]:
+                dataframe_record.update(_flatten_value(domain, record[domain]))
+            dataframe_records.append(dataframe_record)
+        dataframe = lazy.pd.DataFrame(dataframe_records, dtype=object)
+
+        metadata_path = path.with_name(cls.metadata_file_name)
+        if metadata_path.is_file():
+            metadata = lazy.pd.read_csv(metadata_path, dtype=object).map(_parse_csv_value)
+            metadata_fields = tuple(metadata.columns)
+            if not metadata_fields or metadata_fields[0] != "step":
+                raise ValueError(f"metadata file must begin with a step field: {metadata_fields}")
+            invalid_fields = [
+                field
+                for field in metadata_fields[1:]
+                if field.split(".", maxsplit=1)[0] in cls._core_domains
+            ]
+            if invalid_fields:
+                raise ValueError(f"metadata file contains reserved fields: {invalid_fields}")
+            dataframe = dataframe.merge(metadata, on="step", how="left", validate="one_to_one")
+
+        return cls(iteration_dir=path.parent, dataframe=dataframe)
 
     def append(
         self,
@@ -191,6 +230,16 @@ def _validate_csv_header(path: Path, fields: tuple[str, ...]) -> bool:
     if existing_fields != fields:
         raise ValueError(f"trajectory file fields do not match: expected {fields}, got {existing_fields}")
     return False
+
+
+def _parse_csv_value(value: object) -> object:
+    """Parse Python-literal CSV values while preserving ordinary strings."""
+    if not isinstance(value, str):
+        return value
+    try:
+        return literal_eval(value)
+    except (SyntaxError, ValueError):
+        return value
 
 
 def _flatten_value(key: str, value: object) -> dict[str, object]:
