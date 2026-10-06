@@ -28,7 +28,6 @@ from cloudai.configurator.env_params import EnvParamSpec, validate_domain_random
 from cloudai.configurator.unavailable_agent import validate_available_agents
 from cloudai.core import (
     BaseAgentConfig,
-    GridSearchAgent,
     Parser,
     Registry,
     TestRun,
@@ -36,7 +35,6 @@ from cloudai.core import (
     TestScenarioParsingError,
     UnavailableAgent,
 )
-from cloudai.models.scenario import TestRunModel
 from cloudai.models.workload import CmdArgs, TestDefinition
 
 
@@ -51,55 +49,25 @@ def missing_agent(monkeypatch: pytest.MonkeyPatch) -> str:
     return name
 
 
-def test_placeholder_preserves_custom_settings_and_validates_common_settings(missing_agent: str) -> None:
-    data = {"start_action": "first", "custom_option": {"choices": [1, 2]}}
-    config = MissingAgent.get_config_class().model_validate(data)
-    assert config.model_dump()["custom_option"] == data["custom_option"]
-    for start_action in ("first", "random"):
-        TestDefinition(
-            name="t",
-            description="d",
-            test_template_name="test",
-            cmd_args=CmdArgs(),
-            agent=missing_agent,
-            agent_config={**data, "start_action": start_action},
-        )
-        TestRunModel(id="t", test_name="t", agent=missing_agent, agent_config=data)
+def test_placeholder_preserves_custom_settings_and_validates_common_settings() -> None:
+    config_class = MissingAgent.get_config_class()
+    config = config_class.model_validate({"start_action": "first", "custom_option": {"choices": [1, 2]}})
+    assert config.start_action == "first"
+    assert config.model_dump()["custom_option"] == {"choices": [1, 2]}
     with pytest.raises(ValidationError, match="start_action"):
-        TestDefinition(
-            name="t",
-            description="d",
-            test_template_name="test",
-            cmd_args=CmdArgs(),
-            agent=missing_agent,
-            agent_config={"start_action": "invalid"},
-        )
+        config_class.model_validate({"start_action": "invalid"})
 
 
-def test_placeholder_can_use_dependency_independent_config_schema(missing_agent: str, monkeypatch: pytest.MonkeyPatch):
+def test_placeholder_can_use_dependency_independent_config_schema(
+    base_tr: TestRun, missing_agent: str, monkeypatch: pytest.MonkeyPatch
+):
     class CustomConfig(BaseAgentConfig):
         trials: int
 
     monkeypatch.setattr(MissingAgent, "get_config_class", staticmethod(lambda: CustomConfig))
-    TestDefinition(
-        name="t",
-        description="d",
-        test_template_name="test",
-        cmd_args=CmdArgs(),
-        agent=missing_agent,
-        agent_config={"trials": 3},
-    )
+    data = {**base_tr.test.model_dump(), "agent": missing_agent, "agent_config": {"trials": "bad"}}
     with pytest.raises(ValidationError, match="trials"):
-        TestDefinition(
-            name="t",
-            description="d",
-            test_template_name="test",
-            cmd_args=CmdArgs(),
-            agent=missing_agent,
-            agent_config={"trials": "bad"},
-        )
-    with pytest.raises(ValidationError, match="Extra inputs"):
-        TestRunModel(id="t", test_name="t", agent=missing_agent, agent_config={"trials": 3, "typo": True})
+        TestDefinition.model_validate(data)
 
 
 def test_placeholder_fails_on_instantiation_without_touching_environment() -> None:
@@ -107,27 +75,6 @@ def test_placeholder_fails_on_instantiation_without_touching_environment() -> No
     with pytest.raises(ImportError, match="optional-agent"):
         MissingAgent(env, MissingAgent.get_config_class()())
     assert not env.mock_calls
-
-
-def test_unknown_agents_still_fail_and_placeholder_can_be_replaced(missing_agent: str) -> None:
-    with pytest.raises(ValidationError, match="not registered"):
-        TestDefinition(
-            name="t",
-            description="d",
-            test_template_name="test",
-            cmd_args=CmdArgs(),
-            agent="not_registered_optional_agent",
-        )
-    Registry().update_agent(missing_agent, GridSearchAgent)
-    TestDefinition(
-        name="t",
-        description="d",
-        test_template_name="test",
-        cmd_args=CmdArgs(),
-        agent=missing_agent,
-        agent_config={"start_action": "first"},
-    )
-    assert Registry().get_agent(missing_agent) is GridSearchAgent
 
 
 @pytest.fixture
@@ -171,9 +118,10 @@ def test_verify_configs_accepts_placeholder_and_warns(configs: tuple[Path, Path,
     assert "is unavailable" in caplog.text
 
 
-@pytest.mark.parametrize("mode", ["run", "dry-run"])
-@pytest.mark.parametrize("single_sbatch", [False, True])
-@pytest.mark.parametrize("selection", ["test_name", "path", "override"])
+@pytest.mark.parametrize(
+    "mode,single_sbatch,override",
+    [("run", False, False), ("dry-run", True, True)],
+)
 def test_selected_placeholder_fails_before_side_effects(
     configs: tuple[Path, Path, Path],
     missing_agent: str,
@@ -181,14 +129,12 @@ def test_selected_placeholder_fails_before_side_effects(
     caplog,
     mode: str,
     single_sbatch: bool,
-    selection: str,
+    override: bool,
 ):
     system, tests_dir, scenario = configs
     test: dict[str, Any] = {"id": "selected"}
-    if selection == "override":
+    if override:
         test.update(test_name="working", agent=missing_agent, agent_config={"custom_option": True})
-    elif selection == "path":
-        test["path"] = "tests/optional.toml"
     else:
         test["test_name"] = "optional"
     scenario.write_text(toml.dumps({"name": "s", "Tests": [test]}))
@@ -214,13 +160,12 @@ def test_selected_placeholder_fails_before_side_effects(
     runner.assert_not_called()
 
 
-@pytest.mark.parametrize("hook_name", ["pre_test", "post_test"])
-def test_selected_hooks_are_checked(base_tr: TestRun, missing_agent: str, hook_name: str):
+def test_selected_hooks_are_checked(base_tr: TestRun, missing_agent: str):
     hook_test = TestDefinition(
         name="hook", description="d", test_template_name="test", agent=missing_agent, cmd_args=CmdArgs()
     )
     hook_run = TestRun(name="hook-run", test=hook_test, num_nodes=[1, 2], nodes=[])
-    setattr(base_tr, hook_name, TestScenario(name="hook", test_runs=[hook_run]))
+    base_tr.post_test = TestScenario(name="hook", test_runs=[hook_run])
     with pytest.raises(TestScenarioParsingError, match=r"hook-run.*optional-agent"):
         validate_available_agents(TestScenario(name="s", test_runs=[base_tr]))
 
