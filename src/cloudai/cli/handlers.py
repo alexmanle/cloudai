@@ -28,6 +28,7 @@ import toml
 import yaml
 
 from cloudai.configurator.env_params import validate_domain_randomization_active
+from cloudai.configurator.unavailable_agent import validate_available_agents
 from cloudai.core import (
     BaseInstaller,
     CloudAIGymEnv,
@@ -273,6 +274,12 @@ def _setup_system_and_scenario(
         return None
 
     assert test_scenario is not None
+
+    try:
+        validate_available_agents(test_scenario)
+    except TestScenarioParsingError as e:
+        logging.error(str(e))
+        return None
 
     if args.output_dir:
         system.output_path = args.output_dir.absolute()

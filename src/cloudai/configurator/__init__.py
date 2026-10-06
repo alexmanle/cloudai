@@ -20,6 +20,7 @@ from .cloudai_gym import CloudAIGymEnv
 from .grid_search import GridSearchAgent
 from .gymnasium_adapter import GymnasiumAdapter
 from .trajectory import Trajectory
+from .unavailable_agent import UnavailableAgent
 
 __all__ = [
     "BaseAgent",
@@ -28,4 +29,5 @@ __all__ = [
     "GridSearchAgent",
     "GymnasiumAdapter",
     "Trajectory",
+    "UnavailableAgent",
 ]

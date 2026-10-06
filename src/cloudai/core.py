@@ -68,6 +68,7 @@ from .configurator.env_params import (
 )
 from .configurator.grid_search import GridSearchAgent
 from .configurator.gymnasium_adapter import GymnasiumAdapter
+from .configurator.unavailable_agent import UnavailableAgent
 from .models.workload import CmdArgs, NsysConfiguration, PredictorConfig, TestDefinition
 from .parser import Parser
 from .reporter import JUnitReporter, PerTestReporter, StatusReporter, TarballReporter
@@ -131,6 +132,7 @@ __all__ = [
     "TestScenario",
     "TestScenarioParser",
     "TestScenarioParsingError",
+    "UnavailableAgent",
     "case_name",
     "format_validation_error",
 ]

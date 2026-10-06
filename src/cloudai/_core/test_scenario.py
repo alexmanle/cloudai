@@ -152,15 +152,20 @@ class TestRun:
 
         True only when domain randomization is declared (``env_params`` present), the run is a DSE
         job (so a per-trial loop exists - including a ``num_nodes`` sweep), and the agent opts into
-        sampling. An unknown agent is treated as opted-in so the dedicated agent-resolution error
-        surfaces instead of this one.
+        sampling. Unknown and unavailable agents are treated as opted-in so the dedicated
+        agent-resolution or availability error surfaces instead of this one.
         """
         if not self.test.is_domain_randomization_enabled:
             return False
 
         registry = Registry()
         agent = registry.get_agent(self.test.agent) if registry.has_agent(self.test.agent) else None
-        return self.is_dse_job and (agent is None or agent.supports_variable_environment)
+
+        from cloudai.configurator.unavailable_agent import UnavailableAgent
+
+        return self.is_dse_job and (
+            agent is None or issubclass(agent, UnavailableAgent) or agent.supports_variable_environment
+        )
 
     @property
     def nnodes(self) -> int:

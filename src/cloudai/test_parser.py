@@ -20,6 +20,7 @@ from typing import Any, Dict, List
 import toml
 from pydantic import ValidationError
 
+from .configurator.unavailable_agent import UnavailableAgent, UnavailableAgentConfig
 from .core import Registry, System, TestConfigParsingError, format_validation_error
 from .models.workload import TestDefinition
 from .toml_utils import format_toml_decode_error
@@ -87,6 +88,13 @@ class TestParser:
                 msg += f"\n\t{format_validation_error(err)}"
             logging.error(msg)
             raise TestConfigParsingError("Failed to parse test spec") from e
+
+        agent = registry.agents_map.get(test_def.agent)
+        if agent is not None and issubclass(agent, UnavailableAgent):
+            message = f"Agent '{test_def.agent}' is unavailable: {agent.reason}"
+            if agent.get_config_class() is UnavailableAgentConfig:
+                message += " Only common agent settings are validated; agent-specific validation is deferred."
+            logging.warning("%s (%s)", message, self.current_file)
 
         return test_def
 
