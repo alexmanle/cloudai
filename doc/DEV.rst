@@ -38,6 +38,38 @@ We use `import-linter <https://github.com/seddonym/import-linter>`_ to ensure no
 
 ``Registry`` object is a singleton that holds implementation mappings. Users can register their own implementations to the registry or replace the default implementations.
 
+Optional agent dependencies
+---------------------------
+
+If an agent needs an optional package, register an ``UnavailableAgent``
+subclass when the package is missing. Other tests in the same directory can
+then be parsed.
+
+.. code-block:: python
+
+   from cloudai.core import Registry, UnavailableAgent
+
+   try:
+       import optional_agent_package
+   except ImportError:
+       class MissingOptionalAgent(UnavailableAgent):
+           reason = "Install the 'optional-agent-package' package to use this agent."
+
+       agent_class = MissingOptionalAgent
+   else:
+       agent_class = optional_agent_package.OptionalAgent
+
+   Registry().add_agent("optional_agent", agent_class)
+
+The placeholder validates ``BaseAgentConfig`` settings and accepts other fields
+without checking them. Override ``get_config_class()`` to return the real
+configuration model if it can be imported without the optional package.
+
+Parsing and ``verify-configs`` log a warning for unavailable agents. ``run`` and
+``dry-run`` fail before installation or submission if a selected DSE test needs
+one, including hooks and single-sbatch runs. Unknown agent names remain errors.
+Using the placeholder directly raises ``ImportError`` with its configured reason.
+
 Cache
 -----
 
